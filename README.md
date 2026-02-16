@@ -1,6 +1,6 @@
-# MedQT: Ophthalmic Patient Record Management System
+# PatienRecords: Ophthalmic Patient Record Management System
 
-**MedQT** is a robust, specialized desktop application designed for managing medical patient records, with a primary focus on ophthalmic clinical practice. Built with Python and PySide6, it provides a modern and intuitive interface for healthcare professionals to track patient demographics, clinical examinations, and long-term treatment histories.
+**PatienRecords** is a robust, specialized desktop application designed for managing medical patient records, with a primary focus on ophthalmic clinical practice. Built with Python and PySide6, it provides a modern and intuitive interface for healthcare professionals to track patient demographics, clinical examinations, and long-term treatment histories.
 
 ## 🚀 Key Features
 
