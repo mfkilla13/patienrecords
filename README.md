@@ -31,7 +31,7 @@
 
 <img width="600" alt="изображение_2026-02-16_104115973" src="https://github.com/user-attachments/assets/dd6461ca-c221-405f-b18c-a020f5ef7125" />
 
-<img width="600" " alt="изображение_2026-02-16_104234730" src="https://github.com/user-attachments/assets/ba732d2a-8d3c-4fb3-bab9-169a3b1ccbbf" />
+<img width="600" alt="изображение_2026-02-16_104234730" src="https://github.com/user-attachments/assets/ba732d2a-8d3c-4fb3-bab9-169a3b1ccbbf" />
 
 <img width="600" alt="изображение_2026-02-16_104221776" src="https://github.com/user-attachments/assets/54f93649-c601-4fca-bf23-26d9748c38e9" />
 
