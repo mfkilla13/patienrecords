@@ -21,7 +21,7 @@ exe = EXE(
     a.scripts,
     a.binaries,
     a.datas,
-    [('O', None, 'OPTION'), ('O', None, 'OPTION')],
+    [],
     name='MedQT',
     debug=False,
     bootloader_ignore_signals=False,
@@ -35,4 +35,15 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='MedQT'
 )

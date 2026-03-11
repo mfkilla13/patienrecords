@@ -66,7 +66,6 @@ def build_with_pyinstaller():
     
     cmd = [
         sys.executable, '-m', 'PyInstaller',
-        '--onefile',
         '--windowed',
         '--name=MedQT',
         '--add-data=data:data',
@@ -74,7 +73,7 @@ def build_with_pyinstaller():
         '--add-data=windows:windows',
         '--strip',
         '--optimize=2',
-        '--distpath=dist',
+        '--distpath=medqt',
         'main.py'
     ]
     
@@ -86,11 +85,11 @@ def build_with_pyinstaller():
     
     if result.returncode == 0:
         # На Windows .exe, на Linux/Mac исполняемый файл
-        exe_path = Path('dist/MedQT.exe') if sys.platform == 'win32' else Path('dist/MedQT')
+        exe_path = Path('medqt/MedQT/MedQT.exe') if sys.platform == 'win32' else Path('medqt/MedQT/MedQT')
         
         # Если файл не найден по обычному пути
         if not exe_path.exists():
-            dist_files = list(Path('dist').glob('*'))
+            dist_files = list(Path('medqt').glob('**/MedQT*'))
             for f in dist_files:
                 if f.is_file() and ('MedQT' in f.name or 'main' in f.name):
                     exe_path = f
@@ -128,17 +127,25 @@ def main():
     if Path('build').exists():
         print("\n🧹 Очистка старых файлов сборки...")
         shutil.rmtree('build', ignore_errors=True)
+    if Path('medqt').exists():
+        print("🧹 Очистка старой папки medqt...")
+        shutil.rmtree('medqt', ignore_errors=True)
     
     # Сборка
     success = False
     success = build_with_pyinstaller()
     
     # Результат
-    print("\n" + "=" * 60)
-    if success:
-        print("🎉 Сборка завершена успешно!")
+    print("\n" + "="Структура в папке 'medqt/':")
+        print("  medqt/")
+        print("    └── MedQT/")
+        print("        ├── MedQT.exe")
+        print("        ├── data/")
+        print("        └── ...другие файлы")
         print("\n📌 Что дальше:")
-        print("  1. Найдите .exe в папке 'dist/'")
+        print("  1. Найдите папку 'medqt' с exe и data внутри")
+        print("  2. Используйте MedQT.exe для запуска")
+        print("  3. На целевой машине данные папка data должны быть со скопированы вместе c exe 'dist/'")
         print("  2. Можете поделиться файлом с другими")
         print("  3. На целевой машине достаточно .exe файла")
         print("  4. Python не требуется!")
