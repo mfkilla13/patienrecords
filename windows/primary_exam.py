@@ -887,25 +887,62 @@ class PrimaryExamWindow(QDialog):
         vis_label.setStyleSheet("font-weight: bold;")
         vis_vgd_layout.addWidget(vis_label)
 
-        vis_fields = QVBoxLayout()
-        vis_fields.setSpacing(4)
+        # Сетка VIS: OD/OS поля | одно общее меню | поле коррекции = результат
+        vis_grid = QGridLayout()
+        vis_grid.setHorizontalSpacing(6)
+        vis_grid.setVerticalSpacing(6)
 
-        vis_od_row = QHBoxLayout()
-        vis_od_row.addWidget(QLabel("OD"))
+        vis_grid.addWidget(QLabel("OD"), 0, 0)
         self.vis_od = QLineEdit()
-        self.vis_od.setFixedWidth(150)
-        vis_od_row.addWidget(self.vis_od)
-        vis_fields.addLayout(vis_od_row)
+        self.vis_od.setFixedWidth(60)
+        vis_grid.addWidget(self.vis_od, 0, 1)
 
-        vis_os_row = QHBoxLayout()
-        vis_os_row.addWidget(QLabel("OS"))
+        # Одно общее меню коррекции — занимает 2 строки (OD и OS)
+        self.vis_correction = QComboBox()
+        self.vis_correction.addItems([
+            "пусто",
+            "с коррекцией",
+            "n.k. (не коррег.)",
+            "счет пальцев у лица",
+            "движ. руки у лица",
+            "pr. certa",
+            "pr. incerta",
+            "(ноль)",
+            "анофтальм",
+            "эксцентрично",
+        ])
+        self.vis_correction.setFixedWidth(160)
+        vis_grid.addWidget(self.vis_correction, 0, 2, 2, 1)
+
+        self.vis_od_corr = QLineEdit()
+        self.vis_od_corr.setFixedWidth(60)
+        vis_grid.addWidget(self.vis_od_corr, 0, 3)
+        self.vis_eq_od_label = QLabel("=")
+        vis_grid.addWidget(self.vis_eq_od_label, 0, 4, Qt.AlignCenter)
+        self.vis_od_result = QLineEdit()
+        self.vis_od_result.setFixedWidth(60)
+        vis_grid.addWidget(self.vis_od_result, 0, 5)
+
+        vis_grid.addWidget(QLabel("OS"), 1, 0)
         self.vis_os = QLineEdit()
-        self.vis_os.setFixedWidth(150)
-        vis_os_row.addWidget(self.vis_os)
-        vis_fields.addLayout(vis_os_row)
+        self.vis_os.setFixedWidth(60)
+        vis_grid.addWidget(self.vis_os, 1, 1)
 
-        vis_vgd_layout.addLayout(vis_fields)
-        vis_vgd_layout.addSpacing(60)
+        self.vis_os_corr = QLineEdit()
+        self.vis_os_corr.setFixedWidth(60)
+        vis_grid.addWidget(self.vis_os_corr, 1, 3)
+        self.vis_eq_os_label = QLabel("=")
+        vis_grid.addWidget(self.vis_eq_os_label, 1, 4, Qt.AlignCenter)
+        self.vis_os_result = QLineEdit()
+        self.vis_os_result.setFixedWidth(60)
+        vis_grid.addWidget(self.vis_os_result, 1, 5)
+
+        # Инициальное состояние полей коррекции
+        self._update_vis_corr_fields(self.vis_correction.currentText())
+        self.vis_correction.currentTextChanged.connect(self._update_vis_corr_fields)
+
+        vis_vgd_layout.addLayout(vis_grid)
+        vis_vgd_layout.addSpacing(40)
 
         vgd_label = QLabel("ВГД")
         vgd_label.setStyleSheet("font-weight: bold;")
@@ -1297,6 +1334,16 @@ class PrimaryExamWindow(QDialog):
         selected_text = ", ".join(self.selected_examinations) if self.selected_examinations else "(еще не выбраны)"
         self.selected_exam_label.setText(f"Выбранные обследования: {selected_text}")
 
+    def _update_vis_corr_fields(self, value):
+        enabled = (value == "с коррекцией")
+        for w in (self.vis_od_corr, self.vis_od_result, self.vis_os_corr, self.vis_os_result):
+            w.setEnabled(enabled)
+            w.setStyleSheet("" if enabled else "background-color: #e0e0e0; color: #888;")
+            if not enabled:
+                w.clear()
+        self.vis_eq_od_label.setEnabled(enabled)
+        self.vis_eq_os_label.setEnabled(enabled)
+
     def insert_tag(self, text_edit, tag):
         current = text_edit.toPlainText().strip()
         text_edit.setPlainText((current + " " + tag).strip() if current else tag)
@@ -1461,6 +1508,11 @@ class PrimaryExamWindow(QDialog):
 
         vis_od_text = self.vis_od.text().strip()
         vis_os_text = self.vis_os.text().strip()
+        vis_corr = self.vis_correction.currentText()
+        vis_od_corr = self.vis_od_corr.text().strip()
+        vis_od_result = self.vis_od_result.text().strip()
+        vis_os_corr = self.vis_os_corr.text().strip()
+        vis_os_result = self.vis_os_result.text().strip()
         vgd_od_text = self.vgd_od.text().strip()
         vgd_os_text = self.vgd_os.text().strip()
 
@@ -1533,8 +1585,27 @@ class PrimaryExamWindow(QDialog):
                         <tr><td style="text-align:center;">{vis_os_text or '—'}</td></tr>
                     </table>
                 </td>
-                <td style="padding:0 20px;"></td>
                 '''
+                if vis_corr == 'с коррекцией':
+                    vis_html += f'''
+                <td style="text-align:center; padding:0 8px; vertical-align:middle;">с коррекцией</td>
+                <td style="text-align:center; padding:0 5px; vertical-align:middle;">
+                    <table border="0" cellpadding="2" cellspacing="0">
+                        <tr><td style="text-align:center; border-bottom:1px solid black;">{vis_od_corr or '—'}</td></tr>
+                        <tr><td style="text-align:center;">{vis_os_corr or '—'}</td></tr>
+                    </table>
+                </td>
+                <td style="text-align:center; padding:0 5px; vertical-align:middle;">=</td>
+                <td style="text-align:center; padding:0 5px; vertical-align:middle;">
+                    <table border="0" cellpadding="2" cellspacing="0">
+                        <tr><td style="text-align:center; border-bottom:1px solid black;">{vis_od_result or '—'}</td></tr>
+                        <tr><td style="text-align:center;">{vis_os_result or '—'}</td></tr>
+                    </table>
+                </td>
+                    '''
+                elif vis_corr not in ('пусто', ''):
+                    vis_html += f'<td style="text-align:center; padding:0 8px; vertical-align:middle;">{vis_corr}</td>'
+                vis_html += '<td style="padding:0 20px;"></td>'
                 html_lines.append(vis_html)
 
             if vgd_od_text or vgd_os_text:
