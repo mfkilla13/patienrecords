@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QTabWidget, QWidget as QtWidget, QListWidget, QMessageBox, QInputDialog, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QDialog
 from PySide6.QtCore import Qt, QMarginsF, QDate
-from PySide6.QtGui import QTextDocument, QPageLayout
+from PySide6.QtGui import QTextDocument, QPageLayout, QTextCursor, QTextCharFormat, QFont, QTextTableFormat
 from PySide6.QtPrintSupport import QPrintPreviewDialog, QPrinter
 from datetime import datetime
 from .add_record import AddRecordWindow
@@ -506,17 +506,12 @@ class StationaryCardPage(QWidget):
         try:
             dt = datetime.fromisoformat(history[2])
             formatted_date = dt.strftime("%d.%m.%Y %H:%M")
+            formatted_date_only = dt.strftime("%d.%m.%Y")
         except:
             formatted_date = history[2] or ""
         
-        # Добавляем информацию в начало документа
-        header_info = f"""
-        <div style="text-align: right; font-weight: bold;">{title}</div>
-        <div style="text-align: left;">Дата и время осмотра: {formatted_date}</div>
-        <hr style="border:0; border-top:1px solid #000; margin:6mm 0;">
-        """
-        
-        full_html = header_info + html_content
+        # Получаем информацию о пациенте
+        patient_name = self.patient[2] if self.patient and len(self.patient) > 2 else "Неизвестно"
         
         # Создаем принтер и диалог предварительного просмотра
         printer = QPrinter(QPrinter.HighResolution)
@@ -527,7 +522,48 @@ class StationaryCardPage(QWidget):
         
         def handle_paint(printer):
             document = QTextDocument()
-            document.setHtml(full_html)
+            
+            # Явно задаем шрифт и стили для документа
+            document.setDefaultFont(QFont("Segoe UI", 9))
+            document.setDefaultStyleSheet("""
+                body { 
+                    font-family: 'Segoe UI', Arial, sans-serif; 
+                    font-size: 9pt; 
+                    line-height: 1.2;
+                }
+                table { 
+                    font-family: 'Segoe UI', Arial, sans-serif; 
+                    font-size: 9pt; 
+                }
+            """)
+            
+            cursor = QTextCursor(document)
+            
+            # Формат для шапки
+            header_format = QTextCharFormat()
+            header_format.setFont(QFont("Segoe UI", 9))
+            
+            title_format = QTextCharFormat()
+            title_format.setFont(QFont("Segoe UI", 10, QFont.Bold))
+            
+            # Добавляем дату слева
+            cursor.insertText("Дата: " + formatted_date_only, header_format)
+            
+            # Добавляем несколько абзацев для сдвига вправо
+            cursor.insertText("\n\n")
+            
+            # Добавляем название документа
+            cursor.insertText(title, title_format)
+            cursor.insertText("\n\n")
+            
+            # Горизонтальная линия
+            line_format = QTextCharFormat()
+            line_format.setFont(QFont("Segoe UI", 8))
+            cursor.insertText("_" * 90 + "\n\n", line_format)
+            
+            # Основное содержимое
+            cursor.insertHtml(html_content)
+            
             document.print_(printer)
         
         preview.paintRequested.connect(handle_paint)

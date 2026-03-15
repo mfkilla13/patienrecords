@@ -151,7 +151,9 @@ class MedicalApp(QMainWindow):
 
     def _open_diagnosis_manager(self):
         from windows.primary_exam import DiagnosisManagerDialog
-        data_dir = os.path.join(os.path.dirname(__file__), 'data')
+        # Поддержка PyInstaller: используем sys._MEIPASS для exe, иначе текущую директорию
+        base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+        data_dir = os.path.join(base_path, 'data')
         dialog = DiagnosisManagerDialog(self, data_dir)
         dialog.exec()
 
