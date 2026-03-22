@@ -74,13 +74,13 @@ class MedicalApp(QMainWindow):
 
         # Buttons
         button_layout = QHBoxLayout()
-        self.new_button = QPushButton("+")
+        self.new_button = QPushButton("Добавить")
         self.new_button.clicked.connect(self.new_patient)
         # green = add
         self.new_button.setStyleSheet("background-color: #2ecc71; color: white; font-weight: 600;")
         button_layout.addWidget(self.new_button)
 
-        self.edit_button = QPushButton("✏")
+        self.edit_button = QPushButton("Редактировать")
         self.edit_button.clicked.connect(self.fill_patient)
         self.edit_button.setEnabled(False)
         # yellow = edit
@@ -100,7 +100,7 @@ class MedicalApp(QMainWindow):
         self.delete_history_button.setStyleSheet("background-color: #e74c3c; color: white; font-weight: 600;")
         button_layout.addWidget(self.delete_history_button)
 
-        self.delete_button = QPushButton("✕")
+        self.delete_button = QPushButton("Удалить пациента")
         self.delete_button.clicked.connect(self.delete_patient)
         # red = delete
         self.delete_button.setStyleSheet("background-color: #e74c3c; color: white; font-weight: 600;")
