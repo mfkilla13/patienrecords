@@ -888,7 +888,7 @@ class PrimaryExamWindow(QDialog):
         vis_label.setStyleSheet("font-weight: bold;")
         vis_vgd_layout.addWidget(vis_label)
 
-        # Сетка VIS: OD/OS поля | одно общее меню | поле коррекции = результат
+        # Сетка VIS: OD/OS поля | меню коррекции для каждого | поле коррекции = результат
         vis_grid = QGridLayout()
         vis_grid.setHorizontalSpacing(6)
         vis_grid.setVerticalSpacing(6)
@@ -898,9 +898,9 @@ class PrimaryExamWindow(QDialog):
         self.vis_od.setFixedWidth(60)
         vis_grid.addWidget(self.vis_od, 0, 1)
 
-        # Одно общее меню коррекции — занимает 2 строки (OD и OS)
-        self.vis_correction = QComboBox()
-        self.vis_correction.addItems([
+        # Меню коррекции для OD
+        self.vis_correction_od = QComboBox()
+        self.vis_correction_od.addItems([
             "пусто",
             "с коррекцией",
             "n.k. (не коррег.)",
@@ -912,8 +912,8 @@ class PrimaryExamWindow(QDialog):
             "анофтальм",
             "эксцентрично",
         ])
-        self.vis_correction.setFixedWidth(160)
-        vis_grid.addWidget(self.vis_correction, 0, 2, 2, 1)
+        self.vis_correction_od.setFixedWidth(160)
+        vis_grid.addWidget(self.vis_correction_od, 0, 2)
 
         self.vis_od_corr = QLineEdit()
         self.vis_od_corr.setFixedWidth(60)
@@ -929,6 +929,23 @@ class PrimaryExamWindow(QDialog):
         self.vis_os.setFixedWidth(60)
         vis_grid.addWidget(self.vis_os, 1, 1)
 
+        # Меню коррекции для OS
+        self.vis_correction_os = QComboBox()
+        self.vis_correction_os.addItems([
+            "пусто",
+            "с коррекцией",
+            "n.k. (не коррег.)",
+            "счет пальцев у лица",
+            "движ. руки у лица",
+            "pr. certa",
+            "pr. incerta",
+            "(ноль)",
+            "анофтальм",
+            "эксцентрично",
+        ])
+        self.vis_correction_os.setFixedWidth(160)
+        vis_grid.addWidget(self.vis_correction_os, 1, 2)
+
         self.vis_os_corr = QLineEdit()
         self.vis_os_corr.setFixedWidth(60)
         vis_grid.addWidget(self.vis_os_corr, 1, 3)
@@ -939,8 +956,10 @@ class PrimaryExamWindow(QDialog):
         vis_grid.addWidget(self.vis_os_result, 1, 5)
 
         # Инициальное состояние полей коррекции
-        self._update_vis_corr_fields(self.vis_correction.currentText())
-        self.vis_correction.currentTextChanged.connect(self._update_vis_corr_fields)
+        self._update_vis_corr_fields_od()
+        self._update_vis_corr_fields_os()
+        self.vis_correction_od.currentTextChanged.connect(self._update_vis_corr_fields_od)
+        self.vis_correction_os.currentTextChanged.connect(self._update_vis_corr_fields_os)
 
         vis_vgd_layout.addLayout(vis_grid)
         vis_vgd_layout.addSpacing(40)
@@ -1032,6 +1051,13 @@ class PrimaryExamWindow(QDialog):
                 self.local_status_fields[label] = (od_btn, os_btn)
 
             row_idx += 1
+
+        # Добавим логику для автоматического выбора при "не просматривается" в глазном дне
+        if "Глазное дно" in self.local_status_fields:
+            od_fundus_btn, os_fundus_btn = self.local_status_fields["Глазное дно"]
+            # Подключим обработчик изменений
+            od_fundus_btn.clicked.connect(lambda: self._handle_fundus_change("OD"))
+            os_fundus_btn.clicked.connect(lambda: self._handle_fundus_change("OS"))
 
         local_layout.addLayout(local_grid)
 
@@ -1217,6 +1243,9 @@ class PrimaryExamWindow(QDialog):
             ("Мидриатики", "mydriatics"),
             ("К-сберегающий", "k_sparing"),
             ("Анестетики", "anesthetics"),
+            ("Сахоропонижающие", "hypoglycemic"),
+            ("Гипотензивное", "hypotensive"),
+            ("Другое", "other"),
         ]
 
         # Загружаем все данные один раз
@@ -1343,15 +1372,56 @@ class PrimaryExamWindow(QDialog):
         selected_text = ", ".join(self.selected_examinations) if self.selected_examinations else "(еще не выбраны)"
         self.selected_exam_label.setText(f"Выбранные обследования: {selected_text}")
 
-    def _update_vis_corr_fields(self, value):
+    def _update_vis_corr_fields_od(self):
+        value = self.vis_correction_od.currentText()
         enabled = (value == "с коррекцией")
-        for w in (self.vis_od_corr, self.vis_od_result, self.vis_os_corr, self.vis_os_result):
+        for w in (self.vis_od_corr, self.vis_od_result):
             w.setEnabled(enabled)
             w.setStyleSheet("" if enabled else "background-color: #e0e0e0; color: #888;")
             if not enabled:
                 w.clear()
         self.vis_eq_od_label.setEnabled(enabled)
+
+    def _update_vis_corr_fields_os(self):
+        value = self.vis_correction_os.currentText()
+        enabled = (value == "с коррекцией")
+        for w in (self.vis_os_corr, self.vis_os_result):
+            w.setEnabled(enabled)
+            w.setStyleSheet("" if enabled else "background-color: #e0e0e0; color: #888;")
+            if not enabled:
+                w.clear()
         self.vis_eq_os_label.setEnabled(enabled)
+
+    def _handle_fundus_change(self, eye):
+        """Обработка изменений в глазном дне - автоматический выбор 'не просматривается' для связанных полей"""
+        if "Глазное дно" not in self.local_status_fields:
+            return
+            
+        fundus_btn = self.local_status_fields["Глазное дно"][0 if eye == "OD" else 1]
+        selected = fundus_btn._selected
+        
+        # Если выбрано "не просматривается", автоматически выберем для стекловидного тела, сосудов и сетчатки
+        if "не просматривается" in selected:
+            # Стекловидное тело
+            if "Стекловидное тело" in self.local_status_fields:
+                vitreous_btn = self.local_status_fields["Стекловидное тело"][0 if eye == "OD" else 1]
+                if "не просматривается" not in vitreous_btn._selected:
+                    vitreous_btn._selected.append("не просматривается")
+                    vitreous_btn._refresh_text()
+            
+            # Сосуды
+            if "Сосуды" in self.local_status_fields:
+                vessels_btn = self.local_status_fields["Сосуды"][0 if eye == "OD" else 1]
+                if "не просматривается" not in vessels_btn._selected:
+                    vessels_btn._selected.append("не просматривается")
+                    vessels_btn._refresh_text()
+            
+            # Сетчатка
+            if "Сетчатка" in self.local_status_fields:
+                retina_btn = self.local_status_fields["Сетчатка"][0 if eye == "OD" else 1]
+                if "не просматривается" not in retina_btn._selected:
+                    retina_btn._selected.append("не просматривается")
+                    retina_btn._refresh_text()
 
     def insert_tag(self, text_edit, tag):
         current = text_edit.toPlainText().strip()
@@ -1504,6 +1574,9 @@ class PrimaryExamWindow(QDialog):
             "mydriatics": "Мидриатики",
             "k_sparing": "К-сберегающий",
             "anesthetics": "Анестетики",
+            "hypoglycemic": "Сахоропонижающие",
+            "hypotensive": "Гипотензивное",
+            "other": "Другое",
         }
         treatment_basis_lines = []
         for key, btn in self.treatment_basis_fields.items():
@@ -1517,7 +1590,8 @@ class PrimaryExamWindow(QDialog):
 
         vis_od_text = self.vis_od.text().strip()
         vis_os_text = self.vis_os.text().strip()
-        vis_corr = self.vis_correction.currentText()
+        vis_correction_od = self.vis_correction_od.currentText()
+        vis_correction_os = self.vis_correction_os.currentText()
         vis_od_corr = self.vis_od_corr.text().strip()
         vis_od_result = self.vis_od_result.text().strip()
         vis_os_corr = self.vis_os_corr.text().strip()
@@ -1595,25 +1669,38 @@ class PrimaryExamWindow(QDialog):
                     </table>
                 </td>
                 '''
-                if vis_corr == 'с коррекцией':
+                
+                # Обработка коррекции для OD и OS отдельно
+                has_od_corr = (vis_correction_od == 'с коррекцией')
+                has_os_corr = (vis_correction_os == 'с коррекцией')
+                
+                if has_od_corr or has_os_corr:
+                    # Показываем коррекцию для обоих глаз
                     vis_html += f'''
-                <td style="text-align:center; padding:0 8px; vertical-align:middle;">с коррекцией</td>
+                <td style="text-align:center; padding:0 8px; vertical-align:middle;">
+                    <table border="0" cellpadding="2" cellspacing="0">
+                        <tr><td style="text-align:center;">{vis_correction_od if has_od_corr else ' '}</td></tr>
+                        <tr><td style="text-align:center;">{vis_correction_os if has_os_corr else ' '}</td></tr>
+                    </table>
+                </td>
                 <td style="text-align:center; padding:0 5px; vertical-align:middle;">
                     <table border="0" cellpadding="2" cellspacing="0">
-                        <tr><td style="text-align:center; border-bottom:1px solid black;">{vis_od_corr or '—'}</td></tr>
-                        <tr><td style="text-align:center;">{vis_os_corr or '—'}</td></tr>
+                        <tr><td style="text-align:center; border-bottom:1px solid black;">{vis_od_corr or ' '}</td></tr>
+                        <tr><td style="text-align:center;">{vis_os_corr or ' '}</td></tr>
                     </table>
                 </td>
                 <td style="text-align:center; padding:0 5px; vertical-align:middle;">=</td>
                 <td style="text-align:center; padding:0 5px; vertical-align:middle;">
                     <table border="0" cellpadding="2" cellspacing="0">
-                        <tr><td style="text-align:center; border-bottom:1px solid black;">{vis_od_result or '—'}</td></tr>
-                        <tr><td style="text-align:center;">{vis_os_result or '—'}</td></tr>
+                        <tr><td style="text-align:center; border-bottom:1px solid black;">{vis_od_result or ' '}</td></tr>
+                        <tr><td style="text-align:center;">{vis_os_result or ' '}</td></tr>
                     </table>
                 </td>
                     '''
-                elif vis_corr not in ('пусто', ''):
-                    vis_html += f'<td style="text-align:center; padding:0 8px; vertical-align:middle;">{vis_corr}</td>'
+                elif vis_correction_od not in ('пусто', ''):
+                    vis_html += f'<td style="text-align:center; padding:0 8px; vertical-align:middle;">{vis_correction_od}</td>'
+                elif vis_correction_os not in ('пусто', ''):
+                    vis_html += f'<td style="text-align:center; padding:0 8px; vertical-align:middle;">{vis_correction_os}</td>'
                 vis_html += '<td style="padding:0 20px;"></td>'
                 html_lines.append(vis_html)
 
