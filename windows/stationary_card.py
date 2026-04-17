@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QTabWidget, QWidget as QtWidget, QListWidget, QMessageBox, QInputDialog, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QDialog
 from PySide6.QtCore import Qt, QMarginsF, QDate
-from PySide6.QtGui import QTextDocument, QPageLayout, QTextCursor, QTextCharFormat, QFont, QTextTableFormat
+from PySide6.QtGui import QTextDocument, QPageLayout, QTextCursor, QTextCharFormat, QFont, QTextTableFormat, QTextBlockFormat
 from PySide6.QtPrintSupport import QPrintPreviewDialog, QPrinter
 from datetime import datetime
 from .add_record import AddRecordWindow
@@ -39,7 +39,7 @@ class StationaryCardPage(QWidget):
                 dob_formatted = d.toString("dd.MM.yyyy")
             else:
                 dob_formatted = self.patient[3]
-        header_label = QLabel(f"Стационарная карта №{self.card_number} {self.patient[2] or ''} {self.patient[1]} {dob_formatted}")
+        header_label = QLabel(f"Стационарная карта №{self.card_number} {self.patient[2] or ''} {self.patient[9] if len(self.patient) > 9 else ''} {self.patient[1]} {dob_formatted}".strip())
         header_label.setStyleSheet("font-weight: bold; font-size: 14px;")
         layout.addWidget(header_label)
 
@@ -100,7 +100,7 @@ class StationaryCardPage(QWidget):
                 elif line.startswith("Исход:"):
                     outcome = line.split(":", 1)[1].strip()
 
-        # Update diagnoses from primary_exam if primary_exam exists (it has higher priority for clinical)
+        self.admission_time = admission_time
         for h in histories:
             if h[3] == "primary_exam":
                 if h[9]: clinical_diag = h[9]
@@ -110,7 +110,7 @@ class StationaryCardPage(QWidget):
         layout.addWidget(self.tab_widget)
 
         # Header Update (now we have the real card number)
-        header_label.setText(f"Стационарная карта №{self.card_number} {self.patient[2] or ''} {self.patient[1]} {dob_formatted}")
+        header_label.setText(f"Стационарная карта №{self.card_number} {self.patient[2] or ''} {self.patient[9] if len(self.patient) > 9 else ''} {self.patient[1]} {dob_formatted}".strip())
         self.setAccessibleName(f"Стационарная карта №{self.card_number}")
 
         # Tab 1: Паспортная часть
@@ -491,7 +491,7 @@ class StationaryCardPage(QWidget):
         record_type = history[3]
         title = ""
         if record_type == "primary_exam":
-            title = "Первичный осмотр врача ГУ БЦГБ"
+            title = "Первичный осмотр"
         elif record_type == "plan":
             title = "Лист назначений"
         elif record_type == "passport":
@@ -506,12 +506,12 @@ class StationaryCardPage(QWidget):
         try:
             dt = datetime.fromisoformat(history[2])
             formatted_date = dt.strftime("%d.%m.%Y %H:%M")
-            formatted_date_only = dt.strftime("%d.%m.%Y")
+            formatted_date_only = dt.strftime("%d.%m.%Y") + (" " + self.admission_time if self.admission_time else "")
         except:
             formatted_date = history[2] or ""
         
         # Получаем информацию о пациенте
-        patient_name = self.patient[2] if self.patient and len(self.patient) > 2 else "Неизвестно"
+        patient_name = f"{self.patient[1]} {self.patient[2]} {self.patient[9] if len(self.patient) > 9 else ''}".strip() if self.patient and len(self.patient) > 2 else "Неизвестно"
         
         # Создаем принтер и диалог предварительного просмотра
         printer = QPrinter(QPrinter.HighResolution)
@@ -546,20 +546,25 @@ class StationaryCardPage(QWidget):
             title_format = QTextCharFormat()
             title_format.setFont(QFont("Segoe UI", 10, QFont.Bold))
             
-            # Добавляем дату слева
+            # Создаем таблицу для шапки: дата слева, заголовок по центру
+            table = cursor.insertTable(1, 2)
+            table_format = QTextTableFormat()
+            table_format.setBorder(0)
+            table.setFormat(table_format)
+            
+            # Левая ячейка: дата
+            cursor = table.cellAt(0, 0).firstCursorPosition()
             cursor.insertText("Дата: " + formatted_date_only, header_format)
             
-            # Добавляем несколько абзацев для сдвига вправо
-            cursor.insertText("\n\n")
-            
-            # Добавляем название документа
+            # Правая ячейка: заголовок по центру
+            cursor = table.cellAt(0, 1).firstCursorPosition()
+            block_format = QTextBlockFormat()
+            block_format.setAlignment(Qt.AlignCenter)
+            cursor.setBlockFormat(block_format)
             cursor.insertText(title, title_format)
-            cursor.insertText("\n\n")
             
-            # Горизонтальная линия
-            line_format = QTextCharFormat()
-            line_format.setFont(QFont("Segoe UI", 8))
-            cursor.insertText("_" * 90 + "\n\n", line_format)
+            cursor.movePosition(QTextCursor.End)
+            cursor.insertText("\n\n")
             
             # Основное содержимое
             cursor.insertHtml(html_content)

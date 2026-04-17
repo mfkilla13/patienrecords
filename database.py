@@ -18,7 +18,8 @@ class Database:
                 city TEXT,
                 street TEXT,
                 house TEXT,
-                apartment TEXT
+                apartment TEXT,
+                patronymic TEXT
             )
         ''')
         self.conn.execute('''
@@ -73,13 +74,17 @@ class Database:
             self.conn.execute('ALTER TABLE histories ADD COLUMN history_id INTEGER')
         except sqlite3.OperationalError:
             pass
+        try:
+            self.conn.execute('ALTER TABLE patients ADD COLUMN patronymic TEXT DEFAULT ""')
+        except sqlite3.OperationalError:
+            pass
         self.conn.commit()
 
-    def add_patient(self, surname, name='', dob='', city='', street='', house='', apartment=''):
+    def add_patient(self, surname, name='', dob='', city='', street='', house='', apartment='', patronymic=''):
         created_at = datetime.now().isoformat()
         cursor = self.conn.execute(
-            'INSERT INTO patients (surname, name, dob, created_at, city, street, house, apartment) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            (surname, name, dob, created_at, city, street, house, apartment),
+            'INSERT INTO patients (surname, name, dob, created_at, city, street, house, apartment, patronymic) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            (surname, name, dob, created_at, city, street, house, apartment, patronymic),
         )
         self.conn.commit()
         return cursor.lastrowid
@@ -137,10 +142,10 @@ class Database:
         self.conn.execute('DELETE FROM appointments WHERE history_id = ?', (history_id,))
         self.conn.commit()
 
-    def update_patient(self, patient_id, surname, name, dob, city='', street='', house='', apartment=''):
+    def update_patient(self, patient_id, surname, name, dob, city='', street='', house='', apartment='', patronymic=''):
         self.conn.execute(
-            'UPDATE patients SET surname = ?, name = ?, dob = ?, city = ?, street = ?, house = ?, apartment = ? WHERE id = ?',
-            (surname, name, dob, city, street, house, apartment, patient_id),
+            'UPDATE patients SET surname = ?, name = ?, dob = ?, city = ?, street = ?, house = ?, apartment = ?, patronymic = ? WHERE id = ?',
+            (surname, name, dob, city, street, house, apartment, patronymic, patient_id),
         )
         self.conn.commit()
 

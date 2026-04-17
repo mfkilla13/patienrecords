@@ -83,7 +83,7 @@ class EnhancedMultiSelectDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setModal(True)
-        self.resize(600, 500)
+        self.resize(600, 550)
 
         self._options = list(options)
         self._selected = list(selected or [])
@@ -101,17 +101,20 @@ class EnhancedMultiSelectDialog(QDialog):
         left_layout.addWidget(QLabel("Доступные:"))
         self.available_list = QListWidget()
         self.available_list.addItems([opt for opt in self._options if opt not in self._selected])
-        left_layout.addWidget(self.available_list)
+        left_layout.addWidget(self.available_list, 1)  # stretch to bottom
 
         # Кнопки управления доступными
-        avail_btns = QVBoxLayout()
+        avail_btns = QHBoxLayout()
         self.add_avail_btn = QPushButton("+")
+        self.add_avail_btn.setFixedSize(25, 25)
         self.add_avail_btn.clicked.connect(self._add_available)
         avail_btns.addWidget(self.add_avail_btn)
         self.edit_avail_btn = QPushButton("✎")
+        self.edit_avail_btn.setFixedSize(25, 25)
         self.edit_avail_btn.clicked.connect(self._edit_available)
         avail_btns.addWidget(self.edit_avail_btn)
         self.del_avail_btn = QPushButton("–")
+        self.del_avail_btn.setFixedSize(25, 25)
         self.del_avail_btn.clicked.connect(self._delete_available)
         avail_btns.addWidget(self.del_avail_btn)
         avail_btns.addStretch()
@@ -139,24 +142,16 @@ class EnhancedMultiSelectDialog(QDialog):
         self.delete_button = QPushButton("Удалить")
         self.delete_button.clicked.connect(self._delete_selected)
         right_layout.addWidget(self.delete_button)
+
+        # Примечание
+        right_layout.addWidget(QLabel("Примечание:"))
+        self.note_edit = QTextEdit(self._note_text)
+        self.note_edit.setMaximumHeight(60)
+        right_layout.addWidget(self.note_edit)
+
         lists_layout.addLayout(right_layout)
 
         main.addLayout(lists_layout)
-
-        # Добавить новое
-        add_layout = QHBoxLayout()
-        add_layout.addWidget(QLabel("Добавить новое:"))
-        self.new_diag_edit = QLineEdit()
-        add_layout.addWidget(self.new_diag_edit)
-        self.add_new_button = QPushButton("Добавить")
-        self.add_new_button.clicked.connect(self._add_new_diag)
-        add_layout.addWidget(self.add_new_button)
-        main.addLayout(add_layout)
-
-        # Примечание
-        main.addWidget(QLabel("Примечание (если нужно):"))
-        self.note_edit = QTextEdit(self._note_text)
-        main.addWidget(self.note_edit)
 
         # Кнопки
         btns = QHBoxLayout()
@@ -179,16 +174,6 @@ class EnhancedMultiSelectDialog(QDialog):
         if current:
             self.available_list.addItem(current.text())
             self.selected_list.takeItem(self.selected_list.row(current))
-
-    def _add_new_diag(self):
-        new_diag = self.new_diag_edit.text().strip()
-        if new_diag and new_diag not in [self.selected_list.item(i).text() for i in range(self.selected_list.count())]:
-            self.selected_list.addItem(new_diag)
-            # Добавить в общий список и сохранить
-            if new_diag not in self._options:
-                self._options.append(new_diag)
-                self._save_options()
-            self.new_diag_edit.clear()
 
     def _delete_selected(self):
         current = self.selected_list.currentItem()
@@ -1245,7 +1230,8 @@ class PrimaryExamWindow(QDialog):
             ("Анестетики", "anesthetics"),
             ("Сахоропонижающие", "hypoglycemic"),
             ("Гипотензивное", "hypotensive"),
-            ("Другое", "other"),
+            ("Мочегонное", "diuretic"),
+            ("Антитромбической цели", "antithrombotic"),
         ]
 
         # Загружаем все данные один раз
@@ -1283,16 +1269,29 @@ class PrimaryExamWindow(QDialog):
         self.tab_widget.addTab(treatment_widget, "Обоснование лечения")
 
         # Список обследований
-        self.examinations = [
-            "Общий анализ мочи",
-            "Биохимический анализ крови",
-            "Флюорография",
-            "Маммография",
-            "ЭКГ",
-            "УЗИ органов брюшной полости",
-            "Рентген грудной клетки",
-            "Анализ кала",
-        ]
+        # Поддержка PyInstaller: используем sys._MEIPASS для exe, иначе относительный путь
+        base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        data_dir = os.path.join(base_path, 'data')
+        examinations_json = os.path.join(data_dir, "examinations.json")
+        self.examinations_json = examinations_json
+        self.examinations = []
+        if os.path.exists(examinations_json):
+            try:
+                with open(examinations_json, "r", encoding="utf-8") as f:
+                    self.examinations = json.load(f)
+            except:
+                self.examinations = [
+                    "Общий анализ крови",
+                    "Общий анализ мочи",
+                    "Биохимический анализ крови",
+                    "Коагулограмма",
+                    "ЭКГ",
+                    "Рентгенография органов грудной клетки",
+                    "УЗИ органов брюшной полости",
+                    "Консультация терапевта",
+                    "Консультация окулиста",
+                    "Консультация невролога",
+                ]
 
     def select_comorbid_diagnoses(self):
         # Поддержка PyInstaller: используем sys._MEIPASS для exe, иначе относительный путь
@@ -1336,7 +1335,7 @@ class PrimaryExamWindow(QDialog):
             self.update_diag_labels()
 
     def select_examinations(self):
-        dialog = EnhancedMultiSelectDialog(self, "Выбор обследований", self.examinations, self.selected_examinations, "", None)
+        dialog = EnhancedMultiSelectDialog(self, "Выбор обследований", self.examinations, self.selected_examinations, "", self.examinations_json)
         if dialog.exec() == QDialog.Accepted:
             self.selected_examinations, _ = dialog.get_result()
             self.update_exam_label()
@@ -1576,7 +1575,8 @@ class PrimaryExamWindow(QDialog):
             "anesthetics": "Анестетики",
             "hypoglycemic": "Сахоропонижающие",
             "hypotensive": "Гипотензивное",
-            "other": "Другое",
+            "diuretic": "Мочегонное",
+            "antithrombotic": "Антитромбической цели",
         }
         treatment_basis_lines = []
         for key, btn in self.treatment_basis_fields.items():

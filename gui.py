@@ -111,15 +111,14 @@ class MedicalApp(QMainWindow):
 
         # Patients list
         self.tree = QTableWidget()
-        self.tree.setColumnCount(7)
-        self.tree.setHorizontalHeaderLabels(["Дата", "Фамилия", "Имя", "Дата рожд.", "Диагноз", "Исход", "Дней"])
+        self.tree.setColumnCount(6)
+        self.tree.setHorizontalHeaderLabels(["Дата", "ФИО", "Дата рожд.", "Диагноз", "Исход", "Дней"])
         self.tree.setColumnWidth(0, 90)  # Дата
-        self.tree.setColumnWidth(1, 140)  # Фамилия
-        self.tree.setColumnWidth(2, 120)  # Имя
-        self.tree.setColumnWidth(3, 100)  # Дата рожд.
-        self.tree.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)  # Диагноз
-        self.tree.setColumnWidth(5, 120)  # Исход
-        self.tree.setColumnWidth(6, 60)  # Дней
+        self.tree.setColumnWidth(1, 200)  # ФИО
+        self.tree.setColumnWidth(2, 100)  # Дата рожд.
+        self.tree.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)  # Диагноз
+        self.tree.setColumnWidth(4, 120)  # Исход
+        self.tree.setColumnWidth(5, 60)  # Дней
         self.tree.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.tree.verticalHeader().setDefaultSectionSize(20)
         self.tree.setStyleSheet("QTableWidget::item { padding: 0px; margin: 0px; }")
@@ -290,6 +289,7 @@ class MedicalApp(QMainWindow):
             'admission_date': admission_date,
             'surname': p[1] or '',
             'name': p[2] or '',
+            'patronymic': p[9] if len(p) > 9 else '',
             'dob': dob,
             'diag_admission': diag_admission,
             'diag_clinical': diag_clinical,
@@ -316,27 +316,29 @@ class MedicalApp(QMainWindow):
             
             self.tree.setItem(row, 0, QTableWidgetItem(s['admission_date']))
             
-            item_surname = QTableWidgetItem(s['surname'])
-            item_surname.setData(Qt.UserRole, s['pid'])
-            item_surname.setData(Qt.UserRole + 1, s['hid'])
-            self.tree.setItem(row, 1, item_surname)
+            fio = f"{s['surname']} {s['name']} {s['patronymic']}".strip()
+            item_fio = QTableWidgetItem(fio)
+            item_fio.setData(Qt.UserRole, s['pid'])
+            item_fio.setData(Qt.UserRole + 1, s['hid'])
+            self.tree.setItem(row, 1, item_fio)
             
-            self.tree.setItem(row, 2, QTableWidgetItem(s['name']))
-            self.tree.setItem(row, 3, QTableWidgetItem(s['dob']))
+            self.tree.setItem(row, 2, QTableWidgetItem(s['dob']))
             
             # Show clinical diagnosis if available, otherwise fallback to admission diagnosis
             diag_to_show = s['diag_clinical'] if s['diag_clinical'] else s['diag_admission']
-            self.tree.setItem(row, 4, QTableWidgetItem(diag_to_show))
+            self.tree.setItem(row, 3, QTableWidgetItem(diag_to_show))
             
-            self.tree.setItem(row, 5, QTableWidgetItem(s['outcome']))
-            self.tree.setItem(row, 6, QTableWidgetItem(s['days']))
+            self.tree.setItem(row, 4, QTableWidgetItem(s['outcome']))
+            self.tree.setItem(row, 5, QTableWidgetItem(s['days']))
 
     def filter_patients(self):
         query = self.search_entry.text().lower()
         rows_data = []
         for p in self.db.get_patients():
-            if query and query not in (p[1] or '').lower() and query not in (p[2] or '').lower():
-                continue
+            if query:
+                fio = f"{p[1] or ''} {p[2] or ''} {p[9] if len(p) > 9 else ''}".strip().lower()
+                if query not in fio:
+                    continue
             summary = self._get_patient_summary(p)
             if summary:
                 rows_data.append(summary)
@@ -351,20 +353,20 @@ class MedicalApp(QMainWindow):
             
             self.tree.setItem(row, 0, QTableWidgetItem(s['admission_date']))
             
-            item_surname = QTableWidgetItem(s['surname'])
-            item_surname.setData(Qt.UserRole, s['pid'])
-            item_surname.setData(Qt.UserRole + 1, s['hid'])
-            self.tree.setItem(row, 1, item_surname)
+            fio = f"{s['surname']} {s['name']} {s['patronymic']}".strip()
+            item_fio = QTableWidgetItem(fio)
+            item_fio.setData(Qt.UserRole, s['pid'])
+            item_fio.setData(Qt.UserRole + 1, s['hid'])
+            self.tree.setItem(row, 1, item_fio)
             
-            self.tree.setItem(row, 2, QTableWidgetItem(s['name']))
-            self.tree.setItem(row, 3, QTableWidgetItem(s['dob']))
+            self.tree.setItem(row, 2, QTableWidgetItem(s['dob']))
             
             # Show clinical diagnosis if available, otherwise fallback to admission diagnosis
             diag_to_show = s['diag_clinical'] if s['diag_clinical'] else s['diag_admission']
-            self.tree.setItem(row, 4, QTableWidgetItem(diag_to_show))
+            self.tree.setItem(row, 3, QTableWidgetItem(diag_to_show))
             
-            self.tree.setItem(row, 5, QTableWidgetItem(s['outcome']))
-            self.tree.setItem(row, 6, QTableWidgetItem(s['days']))
+            self.tree.setItem(row, 4, QTableWidgetItem(s['outcome']))
+            self.tree.setItem(row, 5, QTableWidgetItem(s['days']))
 
     def new_patient(self):
         self.open_create_history_wizard()
@@ -656,7 +658,7 @@ class HistoryDialog(QDialog):
         self.patient_id = patient_id
         self.patient = patient
         self.db = db
-        self.setWindowTitle(f"Histories for {patient[1]}")
+        self.setWindowTitle(f"Histories for {patient[1]} {patient[2]} {patient[9] if len(patient) > 9 else ''}".strip())
         self.setModal(True)
         self.resize(800, 600)
         layout = QVBoxLayout(self)

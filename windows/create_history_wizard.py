@@ -33,12 +33,13 @@ class WizardPatient:
     patient_id: int
     surname: str
     name: str
+    patronymic: str
     dob: str
     address: str
 
     @property
     def display_name(self) -> str:
-        full = f"{self.surname} {self.name}".strip()
+        full = f"{self.surname} {self.name} {self.patronymic}".strip()
         return full if full else self.surname
 
 
@@ -144,18 +145,19 @@ class CreateHistoryWizard(QDialog):
     def _patients_from_db(self) -> list[WizardPatient]:
         patients = []
         for p in self.db.get_patients():
-            # patients: (id, surname, name, dob, created_at, address?)
+            # patients: (id, surname, name, patronymic, dob, created_at, city, street, house, apartment)
             pid = int(p[0])
             surname = p[1] or ""
-            name = (p[2] or "") if len(p) > 2 else ""
-            dob = (p[3] or "") if len(p) > 3 else ""
+            name = p[2] or ""
+            patronymic = p[9] if len(p) > 9 else ""
+            dob = p[3] or ""
             # compose address from components if present
             address = ""
             try:
-                city = p[5] if len(p) > 5 and p[5] else ''
-                street = p[6] if len(p) > 6 and p[6] else ''
-                house = p[7] if len(p) > 7 and p[7] else ''
-                apt = p[8] if len(p) > 8 and p[8] else ''
+                city = p[6] if len(p) > 6 and p[6] else ''
+                street = p[7] if len(p) > 7 and p[7] else ''
+                house = p[8] if len(p) > 8 and p[8] else ''
+                apt = p[9] if len(p) > 9 and p[9] else ''
                 parts = []
                 if city:
                     parts.append(city)
@@ -173,6 +175,7 @@ class CreateHistoryWizard(QDialog):
                     patient_id=pid,
                     surname=surname,
                     name=name,
+                    patronymic=patronymic,
                     dob=dob,
                     address=address,
                 )
@@ -185,7 +188,7 @@ class CreateHistoryWizard(QDialog):
 
         for p in self._patients_from_db():
             if query:
-                hay = f"{p.surname} {p.name}".lower()
+                hay = f"{p.surname} {p.name} {p.patronymic}".lower()
                 if query not in hay:
                     continue
             item = QTreeWidgetItem([p.display_name, p.dob, p.address])
@@ -225,6 +228,7 @@ class CreateHistoryWizard(QDialog):
                 street=street or '',
                 house=house or '',
                 apartment=apartment,
+                patronymic=dialog.patronymic,
             )
             self._reload_patients()
             self._select_patient_in_tree(patient_id)
@@ -265,6 +269,7 @@ class CreateHistoryWizard(QDialog):
 
         surname = patient[1] or ""
         name = patient[2] or ""
+        patronymic = patient[9] if len(patient) > 9 else ""
         dob = patient[3] or ""
         # compose address from stored components (city, street, house, apartment)
         address = ""
@@ -291,6 +296,7 @@ class CreateHistoryWizard(QDialog):
             title="Редактирование пациента",
             surname=surname,
             name=name,
+            patronymic=patronymic,
             dob=dob,
             address=address,
         )
@@ -311,6 +317,7 @@ class CreateHistoryWizard(QDialog):
                 street=street or '',
                 house=house or '',
                 apartment=apartment,
+                patronymic=dialog.patronymic,
             )
             self._reload_patients()
             self._select_patient_in_tree(int(patient_id))
@@ -535,8 +542,9 @@ class CreateHistoryWizard(QDialog):
 
         surname = patient[1] or ""
         name = patient[2] or ""
+        patronymic = patient[9] if len(patient) > 9 else ""
         dob = patient[3] or ""
-        fio = f"{surname} {name}".strip()
+        fio = f"{surname} {name} {patronymic}".strip()
         self.step2_patient_label.setText(f"{fio}, {dob}".strip(", "))
 
         # Автозаполнение полей шага 2
@@ -657,6 +665,7 @@ class _PatientEditDialog(QDialog):
         title: str,
         surname: str = "",
         name: str = "",
+        patronymic: str = "",
         dob: str = "",
         address: str = "",
     ):
@@ -677,7 +686,11 @@ class _PatientEditDialog(QDialog):
         self._name_edit = QLineEdit(name)
         grid.addWidget(self._name_edit, 0, 3)
 
-        grid.addWidget(QLabel("Дата рождения"), 1, 0)
+        grid.addWidget(QLabel("Отчество"), 1, 0)
+        self._patronymic_edit = QLineEdit(patronymic)
+        grid.addWidget(self._patronymic_edit, 1, 1)
+
+        grid.addWidget(QLabel("Дата рождения"), 1, 2)
         from PySide6.QtCore import QDate, QLocale
         self._dob_edit = QDateEdit()
         # try to parse incoming dob string
@@ -694,10 +707,10 @@ class _PatientEditDialog(QDialog):
         self._dob_edit.setCalendarPopup(True)
         self._dob_edit.setLocale(QLocale(QLocale.Russian))
         self._dob_edit.setDisplayFormat("dd.MM.yyyy")
-        grid.addWidget(self._dob_edit, 1, 1)
+        grid.addWidget(self._dob_edit, 1, 3)
 
         # Address: city, street, house with autocompletion
-        grid.addWidget(QLabel("Город/населенный пункт"), 1, 2)
+        grid.addWidget(QLabel("Город/населенный пункт"), 2, 0)
         self._city_combo = QComboBox()
         self._city_combo.setEditable(True)
         pmr_cities = [
@@ -730,7 +743,7 @@ class _PatientEditDialog(QDialog):
             self._city_combo.setCompleter(completer)
         except Exception:
             pass
-        grid.addWidget(self._city_combo, 1, 3)
+        grid.addWidget(self._city_combo, 2, 1)
 
         grid.addWidget(QLabel("Улица"), 2, 2)
         self._street_combo = QComboBox()
@@ -760,9 +773,9 @@ class _PatientEditDialog(QDialog):
             pass
         grid.addWidget(self._street_combo, 2, 3)
 
-        grid.addWidget(QLabel("Дом, кв."), 3, 2)
+        grid.addWidget(QLabel("Дом, кв."), 3, 0)
         self._house_edit = QLineEdit()
-        grid.addWidget(self._house_edit, 3, 3)
+        grid.addWidget(self._house_edit, 3, 1)
 
         # If an address string was provided, try to parse into components
         if address:
@@ -831,6 +844,10 @@ class _PatientEditDialog(QDialog):
     @property
     def name(self) -> str:
         return self._name_edit.text().strip()
+
+    @property
+    def patronymic(self) -> str:
+        return self._patronymic_edit.text().strip()
 
     @property
     def dob(self) -> str:
