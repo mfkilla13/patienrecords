@@ -71,6 +71,13 @@ def build_with_pyinstaller():
         '--add-data=data:data',
         '--add-data=widgets:widgets',
         '--add-data=windows:windows',
+        '--hidden-import=PySide6',
+        '--hidden-import=PySide6.QtCore',
+        '--hidden-import=PySide6.QtGui',
+        '--hidden-import=PySide6.QtWidgets',
+        '--hidden-import=PySide6.QtPrintSupport',
+        '--hidden-import=PySide6.QtNetwork',
+        '--hidden-import=PySide6.QtSql',
         '--strip',
         '--optimize=2',
         '--distpath=medqt',
@@ -138,21 +145,18 @@ def main():
     # Результат
     if success:
         print("\n" + "="*60)
-        print("Структура в папке 'medqt/':")
+        print("🎉 Сборка завершена успешно!")
+        print("\nЭто один файл со всеми зависимостями внутри:")
         print("  medqt/")
-        print("    └── MedQT/")
-        print("        ├── MedQT.exe")
-        print("        ├── data/")
-        print("        └── ...другие файлы")
+        print("    └── MedQT.exe")
         print("\n📌 Что дальше:")
-        print("  1. Найдите папку 'medqt' с exe и data внутри")
-        print("  2. Используйте MedQT.exe для запуска")
-        print("  3. На целевой машине папка data должна быть скопирована вместе с exe")
-        print("  4. Можете поделиться файлом с другими")
-        print("  5. На целевой машине достаточно папки 'MedQT'")
+        print("  1. Найдите MedQT.exe в папке 'medqt/'")
+        print("  2. Используйте этот файл для запуска")
+        print("  3. На целевой машине достаточно одного .exe файла")
+        print("  4. Python не требуется!")
     else:
-        print("\n❌ Сборка не удалась. Проверьте ошибки выше.")
-    
+        print("❌ Сборка не удалась. Проверьте ошибки выше.")
+        sys.exit(1)
     print("=" * 60)
 
 if __name__ == '__main__':

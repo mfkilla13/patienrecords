@@ -1,14 +1,34 @@
 import sqlite3
+from pathlib import Path
 from datetime import datetime
 
 class Database:
+    CURRENT_SCHEMA_VERSION = 2
+
     def __init__(self, db_name='patients.db'):
+        self.db_name = db_name
+        self._db_file_existed_before_connect = self._database_file_exists()
         self.conn = sqlite3.connect(db_name)
         self.conn.execute('PRAGMA foreign_keys = ON')
-        self.create_tables()
+        self.migrate_schema()
+
+    def migrate_schema(self):
+        user_version = self._get_user_version()
+        if user_version < self.CURRENT_SCHEMA_VERSION:
+            self._backup_database_before_migration()
+        try:
+            self.conn.execute('BEGIN')
+            self.create_tables()
+            self._ensure_schema_columns()
+            self._migrate_medical_cases()
+            self._migrate_diagnostics_to_cases()
+            self.conn.execute(f'PRAGMA user_version = {self.CURRENT_SCHEMA_VERSION}')
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
 
     def create_tables(self):
-        # Fresh schema: store address components separately
         self.conn.execute('''
             CREATE TABLE IF NOT EXISTS patients (
                 id INTEGER PRIMARY KEY,
@@ -85,33 +105,99 @@ class Database:
                 FOREIGN KEY (patient_id) REFERENCES patients (id)
             )
         ''')
-        # Add record_type column if it doesn't exist (for migration)
-        try:
-            self.conn.execute('ALTER TABLE histories ADD COLUMN record_type TEXT DEFAULT ""')
-        except sqlite3.OperationalError:
-            pass  # column already exists
-        try:
-            self.conn.execute('ALTER TABLE histories ADD COLUMN diag_admission TEXT DEFAULT ""')
-        except sqlite3.OperationalError:
-            pass
-        try:
-            self.conn.execute('ALTER TABLE histories ADD COLUMN diag_clinical TEXT DEFAULT ""')
-        except sqlite3.OperationalError:
-            pass
-        try:
-            self.conn.execute('ALTER TABLE histories ADD COLUMN diag_comorbid TEXT DEFAULT ""')
-        except sqlite3.OperationalError:
-            pass
-        try:
-            self.conn.execute('ALTER TABLE histories ADD COLUMN history_id INTEGER')
-        except sqlite3.OperationalError:
-            pass
-        try:
-            self.conn.execute('ALTER TABLE patients ADD COLUMN patronymic TEXT DEFAULT ""')
-        except sqlite3.OperationalError:
-            pass
-        self._migrate_medical_cases()
-        self.conn.commit()
+
+    def _get_user_version(self):
+        row = self.conn.execute('PRAGMA user_version').fetchone()
+        return int(row[0]) if row else 0
+
+    def _backup_database_before_migration(self):
+        if self.db_name == ':memory:':
+            return
+        if not self._db_file_existed_before_connect:
+            return
+        db_path = Path(self.db_name)
+        if not db_path.exists() or not db_path.is_file():
+            return
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+        backup_dir = db_path.parent / 'backups'
+        backup_dir.mkdir(exist_ok=True)
+        backup_path = backup_dir / f'{db_path.stem}_backup_before_migration_{timestamp}{db_path.suffix}'
+        with sqlite3.connect(backup_path) as backup_conn:
+            self.conn.backup(backup_conn)
+
+    def _database_file_exists(self):
+        if self.db_name == ':memory:':
+            return False
+        return Path(self.db_name).is_file()
+
+    def _table_columns(self, table_name):
+        cursor = self.conn.execute(f'PRAGMA table_info({table_name})')
+        return {row[1] for row in cursor.fetchall()}
+
+    def _ensure_columns(self, table_name, columns):
+        existing_columns = self._table_columns(table_name)
+        for column_name, column_definition in columns:
+            if column_name not in existing_columns:
+                self.conn.execute(f'ALTER TABLE {table_name} ADD COLUMN {column_definition}')
+                existing_columns.add(column_name)
+
+    def _ensure_schema_columns(self):
+        self._ensure_columns('patients', [
+            ('surname', 'surname TEXT DEFAULT ""'),
+            ('name', 'name TEXT DEFAULT ""'),
+            ('dob', 'dob TEXT DEFAULT ""'),
+            ('created_at', 'created_at TEXT'),
+            ('city', 'city TEXT DEFAULT ""'),
+            ('street', 'street TEXT DEFAULT ""'),
+            ('house', 'house TEXT DEFAULT ""'),
+            ('apartment', 'apartment TEXT DEFAULT ""'),
+            ('patronymic', 'patronymic TEXT DEFAULT ""'),
+        ])
+        self._ensure_columns('histories', [
+            ('patient_id', 'patient_id INTEGER'),
+            ('visit_date', 'visit_date TEXT'),
+            ('record_type', 'record_type TEXT DEFAULT ""'),
+            ('examination', 'examination TEXT DEFAULT ""'),
+            ('diagnosis', 'diagnosis TEXT DEFAULT ""'),
+            ('treatment', 'treatment TEXT DEFAULT ""'),
+            ('notes', 'notes TEXT DEFAULT ""'),
+            ('diag_admission', 'diag_admission TEXT DEFAULT ""'),
+            ('diag_clinical', 'diag_clinical TEXT DEFAULT ""'),
+            ('diag_comorbid', 'diag_comorbid TEXT DEFAULT ""'),
+            ('history_id', 'history_id INTEGER'),
+        ])
+        self._ensure_columns('appointments', [
+            ('history_id', 'history_id INTEGER'),
+            ('name', 'name TEXT DEFAULT ""'),
+            ('method', 'method TEXT DEFAULT ""'),
+            ('freq', 'freq TEXT DEFAULT ""'),
+            ('date_assign', 'date_assign TEXT DEFAULT ""'),
+            ('date_cancel', 'date_cancel TEXT DEFAULT ""'),
+            ('created_at', 'created_at TEXT'),
+        ])
+        self._ensure_columns('diagnostics', [
+            ('patient_id', 'patient_id INTEGER'),
+            ('history_id', 'history_id INTEGER'),
+            ('study_date', 'study_date TEXT DEFAULT ""'),
+            ('name', 'name TEXT DEFAULT ""'),
+            ('results', 'results TEXT DEFAULT ""'),
+            ('created_at', 'created_at TEXT'),
+        ])
+        self._ensure_columns('medical_cases', [
+            ('patient_id', 'patient_id INTEGER'),
+            ('card_number', 'card_number TEXT DEFAULT ""'),
+            ('admission_date', 'admission_date TEXT DEFAULT ""'),
+            ('admission_time', 'admission_time TEXT DEFAULT ""'),
+            ('discharge_date', 'discharge_date TEXT DEFAULT ""'),
+            ('discharge_time', 'discharge_time TEXT DEFAULT ""'),
+            ('outcome', 'outcome TEXT DEFAULT ""'),
+            ('status', 'status TEXT NOT NULL DEFAULT "active"'),
+            ('final_diagnosis', 'final_diagnosis TEXT DEFAULT ""'),
+            ('discharge_summary', 'discharge_summary TEXT DEFAULT ""'),
+            ('recommendations', 'recommendations TEXT DEFAULT ""'),
+            ('created_at', 'created_at TEXT'),
+            ('closed_at', 'closed_at TEXT'),
+        ])
 
     def _migrate_medical_cases(self):
         self.conn.execute('''
@@ -148,6 +234,22 @@ class Database:
                 'UPDATE histories SET history_id = ? WHERE patient_id = ? AND history_id IS NULL',
                 (case_cursor.lastrowid, patient_id),
             )
+
+    def _migrate_diagnostics_to_cases(self):
+        self.conn.execute('''
+            UPDATE diagnostics
+               SET history_id = (
+                   SELECT MIN(c.id)
+                     FROM medical_cases c
+                    WHERE c.patient_id = diagnostics.patient_id
+               )
+             WHERE history_id IS NULL
+               AND (
+                   SELECT COUNT(*)
+                     FROM medical_cases c
+                    WHERE c.patient_id = diagnostics.patient_id
+               ) = 1
+        ''')
 
     def add_patient(self, surname, name='', dob='', city='', street='', house='', apartment='', patronymic=''):
         created_at = datetime.now().isoformat()

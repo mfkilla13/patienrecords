@@ -1,7 +1,7 @@
 import html
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QTabWidget, QWidget as QtWidget, QListWidget, QMessageBox, QInputDialog, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QDialog, QComboBox
 from PySide6.QtCore import Qt, QMarginsF, QDate
-from PySide6.QtGui import QTextDocument, QPageLayout, QTextCursor, QTextCharFormat, QFont, QTextTableFormat, QTextBlockFormat
+from PySide6.QtGui import QTextDocument, QPageLayout, QPageSize, QTextCursor, QTextCharFormat, QFont, QTextTableFormat, QTextBlockFormat
 from PySide6.QtPrintSupport import QPrintPreviewDialog, QPrinter
 from datetime import datetime
 from .add_record import AddRecordWindow
@@ -9,6 +9,39 @@ from .edit_record import EditRecordWindow
 from .primary_exam import PrimaryExamWindow
 from widgets.date_input import DateInput
 from widgets.time_input import TimeInput
+
+def _parse_ru_date(value):
+    value = (value or "").strip()
+    for fmt in ("%d.%m.%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(value[:10], fmt)
+        except Exception:
+            pass
+    return None
+
+def _html_plain(value):
+    try:
+        doc = QTextDocument()
+        doc.setHtml(value or "")
+        return doc.toPlainText().strip()
+    except Exception:
+        return value or ""
+
+def _extract_after_label(text, label):
+    for line in (text or "").splitlines():
+        if line.strip().startswith(label):
+            return line.split(":", 1)[1].strip() if ":" in line else ""
+    return ""
+
+def _format_ru_full_date(value):
+    dt = _parse_ru_date(value)
+    if not dt:
+        dt = datetime.now()
+    months = [
+        "января", "февраля", "марта", "апреля", "мая", "июня",
+        "июля", "августа", "сентября", "октября", "ноября", "декабря",
+    ]
+    return f"«{dt.day:02d}» {months[dt.month - 1]} {dt.year} г."
 
 class StationaryCardPage(QWidget):
     def __init__(self, parent, db, patient_id, patient, card_number, case_id=None, read_only=False):
@@ -339,10 +372,21 @@ class StationaryCardPage(QWidget):
         if self.history_id is None:
             QMessageBox.warning(self, "Ошибка", "Не удалось определить историю болезни.")
             return
-        dialog = DischargeDialog(self, self.clinical_diag_entry.text().strip(), self.outcome_text.toPlainText().strip())
+        dialog = DischargeDialog(
+            self,
+            self.clinical_diag_entry.text().strip(),
+            self.outcome_text.toPlainText().strip(),
+            self.admission_date_input.text().strip(),
+        )
         if dialog.exec() != QDialog.Accepted:
             return
         data = dialog.get_data()
+        try:
+            if data["stay_days"] and int(data["stay_days"]) <= 0:
+                QMessageBox.warning(self, "Ошибка", "Дата выписки не может быть раньше даты поступления.")
+                return
+        except ValueError:
+            pass
         reply = QMessageBox.question(
             self,
             "Подтверждение",
@@ -353,11 +397,13 @@ class StationaryCardPage(QWidget):
             return
 
         summary_html = (
+            f"<b>Куда направляется выписка:</b> {html.escape(data['destination'])}<br>"
             f"<b>Дата выписки:</b> {html.escape(data['discharge_date'])} {html.escape(data['discharge_time'])}<br>"
+            f"<b>Место работы и род занятий:</b> {html.escape(data['workplace'])}<br>"
             f"<b>Исход:</b> {html.escape(data['outcome'])}<br>"
             f"<b>Заключительный диагноз:</b> {html.escape(data['final_diagnosis'])}<br><br>"
-            f"<b>Выписной эпикриз:</b><br>{html.escape(data['summary']).replace(chr(10), '<br>')}<br><br>"
-            f"<b>Рекомендации:</b><br>{html.escape(data['recommendations']).replace(chr(10), '<br>')}"
+            f"<b>Краткий анализ, диагностические исследования, течение болезни, проведенное лечение, состояние при выписке:</b><br>{html.escape(data['summary']).replace(chr(10), '<br>')}<br><br>"
+            f"<b>Лечебные и трудовые рекомендации:</b><br>{html.escape(data['recommendations']).replace(chr(10), '<br>')}"
         )
         self.db.discharge_case(
             self.history_id,
@@ -616,6 +662,9 @@ class StationaryCardPage(QWidget):
         
         html_content = history[4]  # examination содержит HTML
         record_type = history[3]
+        if record_type == "discharge_summary":
+            self._print_discharge_form(history)
+            return
         title = ""
         if record_type == "primary_exam":
             title = "Первичный осмотр"
@@ -701,6 +750,160 @@ class StationaryCardPage(QWidget):
             
             document.print_(printer)
         
+        preview.paintRequested.connect(handle_paint)
+        preview.exec()
+
+    def _patient_address(self):
+        if not self.patient:
+            return ""
+        parts = []
+        for idx in (5, 6, 7, 8):
+            if len(self.patient) > idx and self.patient[idx]:
+                parts.append(str(self.patient[idx]))
+        return ", ".join(parts)
+
+    def _patient_dob(self):
+        if not self.patient or len(self.patient) <= 3 or not self.patient[3]:
+            return ""
+        try:
+            return datetime.fromisoformat(self.patient[3]).strftime("%d.%m.%Y")
+        except Exception:
+            return str(self.patient[3])
+
+    def _build_discharge_form_html(self, history):
+        case = self.db.get_case_by_id(self.history_id) if self.history_id is not None else self.case
+        patient_name = f"{self.patient[1]} {self.patient[2]} {self.patient[9] if len(self.patient) > 9 else ''}".strip()
+        address = self._patient_address()
+        dob = self._patient_dob()
+
+        admission_date = case[3] if case and case[3] else self.admission_date_input.text().strip()
+        discharge_date = case[5] if case and case[5] else _extract_after_label(_html_plain(history[4]), "Дата выписки")
+        final_diagnosis = case[9] if case and case[9] else history[5]
+        summary = case[10] if case and case[10] else _extract_after_label(_html_plain(history[4]), "Выписной эпикриз")
+        recommendations = case[11] if case and case[11] else history[7]
+        plain = _html_plain(history[4])
+        destination = _extract_after_label(plain, "Куда направляется выписка")
+        workplace = _extract_after_label(plain, "Место работы и род занятий")
+
+        stay_days = ""
+        start = _parse_ru_date(admission_date)
+        end = _parse_ru_date(discharge_date)
+        if start and end:
+            stay_days = str((end - start).days + 1)
+
+        signature_date = _format_ru_full_date(discharge_date)
+
+        def esc(value):
+            return html.escape(value or "")
+
+        def block(label, value):
+            text = esc(value).replace("\n", "<br>") or "&nbsp;"
+            return f"<div class='block'><span class='label'>{label}</span> {text}</div>"
+
+        return f"""
+        <html>
+        <head>
+        <style>
+            body {{
+                font-family: "Times New Roman", serif;
+                font-size: 10pt;
+                color: #111;
+            }}
+            .top {{
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 8px;
+            }}
+            .top td {{
+                width: 50%;
+                vertical-align: top;
+                font-size: 9pt;
+                line-height: 1.1;
+            }}
+            .center {{ text-align: center; }}
+            .right {{ text-align: right; padding-left: 0; }}
+            .right-wrap {{
+                display: inline-block;
+                text-align: right;
+            }}
+            .title {{
+                text-align: center;
+                font-size: 15pt;
+                font-weight: bold;
+                letter-spacing: 1px;
+                margin-top: 8px;
+            }}
+            .subtitle {{
+                text-align: center;
+                font-weight: bold;
+                margin-bottom: 10px;
+            }}
+            .block {{
+                margin-top: 6px;
+                line-height: 1.18;
+            }}
+            .label {{
+                font-weight: bold;
+                margin-bottom: 1px;
+            }}
+            .date-line {{
+                margin-top: 18px;
+            }}
+            .doctor {{
+                text-align: right;
+                width: 100%;
+                font-size: 10pt;
+                white-space: nowrap;
+            }}
+        </style>
+        </head>
+        <body>
+            <table class="top">
+                <tr>
+                    <td class="center">
+                        Министерство здравоохранения<br>
+                        Приднестровской Молдавской Республики<br>
+                        ГУ БГЦБ
+                    </td>
+                    <td></td>
+                </tr>
+            </table>
+
+            <div class="title">ВЫПИСКА</div>
+            <div class="subtitle">из медицинской карты стационарного больного</div>
+
+            {block("В", destination)}
+            {block("1. Фамилия, имя, отчество больного", patient_name)}
+            {block("2. Дата рождения", dob)}
+            {block("3. Домашний адрес", address)}
+            {block("4. Место работы и род занятий", workplace)}
+            <div class="block">
+                <span class="label">5. Даты: поступления - {esc(admission_date)}, выписка - {esc(discharge_date)}</span>
+            </div>
+            {block("6. Полный диагноз (основное заболевание, сопутствующее осложнение)", final_diagnosis)}
+            {block("7. Краткий анализ, диагностические исследование, течение болезни, проведение лечения, состояние при направлении, при выписке", summary)}
+            {block("8. Рекомендации", recommendations)}
+
+            <div class="date-line">{esc(signature_date)}</div>
+            <div class="doctor">Лечащий врач Воловая А.А. ______________________</div>
+        </body>
+        </html>
+        """
+
+    def _print_discharge_form(self, history):
+        printer = QPrinter(QPrinter.HighResolution)
+        printer.setPageSize(QPageSize(QPageSize.A4))
+        printer.setPageMargins(QMarginsF(10, 8, 10, 8), QPageLayout.Millimeter)
+
+        preview = QPrintPreviewDialog(printer, self)
+        preview.setWindowTitle("Предварительный просмотр выписки")
+
+        def handle_paint(printer):
+            document = QTextDocument()
+            document.setDefaultFont(QFont("Times New Roman", 12))
+            document.setHtml(self._build_discharge_form_html(history))
+            document.print_(printer)
+
         preview.paintRequested.connect(handle_paint)
         preview.exec()
 
@@ -908,23 +1111,38 @@ class StationaryCardPage(QWidget):
 
 
 class DischargeDialog(QDialog):
-    def __init__(self, parent, final_diagnosis='', outcome=''):
+    def __init__(self, parent, final_diagnosis='', outcome='', admission_date=''):
         super().__init__(parent)
         self.setWindowTitle("Выписка пациента")
         self.setModal(True)
+        self.admission_date = admission_date
         self.resize(600, 500)
         layout = QVBoxLayout(self)
 
         date_row = QHBoxLayout()
+        date_row.addWidget(QLabel(f"Дата поступления: {admission_date or 'не указана'}"))
         date_row.addWidget(QLabel("Дата выписки:"))
         self.discharge_date = DateInput()
         self.discharge_date.setText(datetime.now().strftime("%d.%m.%Y"))
+        self.discharge_date.edit.textChanged.connect(self._update_stay_days)
         date_row.addWidget(self.discharge_date)
         date_row.addWidget(QLabel("Время:"))
         self.discharge_time = TimeInput()
         self.discharge_time.setText(datetime.now().strftime("%H:%M"))
         date_row.addWidget(self.discharge_time)
         layout.addLayout(date_row)
+
+        self.stay_days_label = QLabel("")
+        layout.addWidget(self.stay_days_label)
+        self._update_stay_days()
+
+        layout.addWidget(QLabel("Куда направляется выписка:"))
+        self.destination = QLineEdit()
+        layout.addWidget(self.destination)
+
+        layout.addWidget(QLabel("Место работы и род занятий:"))
+        self.workplace = QLineEdit()
+        layout.addWidget(self.workplace)
 
         layout.addWidget(QLabel("Исход:"))
         self.outcome_combo = QComboBox()
@@ -939,11 +1157,11 @@ class DischargeDialog(QDialog):
         self.final_diagnosis.setPlainText(final_diagnosis)
         layout.addWidget(self.final_diagnosis)
 
-        layout.addWidget(QLabel("Выписной эпикриз:"))
+        layout.addWidget(QLabel("Краткий анализ, диагностические исследования, течение болезни, проведенное лечение, состояние при выписке:"))
         self.summary = QTextEdit()
         layout.addWidget(self.summary)
 
-        layout.addWidget(QLabel("Рекомендации:"))
+        layout.addWidget(QLabel("Лечебные и трудовые рекомендации:"))
         self.recommendations = QTextEdit()
         layout.addWidget(self.recommendations)
 
@@ -957,10 +1175,27 @@ class DischargeDialog(QDialog):
         buttons.addWidget(ok)
         layout.addLayout(buttons)
 
+    def _stay_days(self):
+        start = _parse_ru_date(self.admission_date)
+        end = _parse_ru_date(self.discharge_date.text())
+        if not start or not end:
+            return ""
+        return str((end - start).days + 1)
+
+    def _update_stay_days(self):
+        days = self._stay_days()
+        if days:
+            self.stay_days_label.setText(f"Койко-дней: {days}")
+        else:
+            self.stay_days_label.setText("Койко-дней: не удалось рассчитать")
+
     def get_data(self):
         return {
+            "destination": self.destination.text().strip(),
             "discharge_date": self.discharge_date.text().strip(),
             "discharge_time": self.discharge_time.text().strip(),
+            "stay_days": self._stay_days(),
+            "workplace": self.workplace.text().strip(),
             "outcome": self.outcome_combo.currentText().strip(),
             "final_diagnosis": self.final_diagnosis.toPlainText().strip(),
             "summary": self.summary.toPlainText().strip(),

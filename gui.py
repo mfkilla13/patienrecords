@@ -1,5 +1,6 @@
 import sys
 import os
+import re
 from datetime import datetime
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
@@ -17,6 +18,17 @@ from windows.primary_exam import PrimaryExamWindow
 from windows.edit_record import EditRecordWindow
 from windows.create_history_wizard import CreateHistoryWizard
 from PySide6.QtWidgets import QStackedWidget, QToolBar
+from address_book import get_cities, get_streets, remember_address
+
+SORT_ROLE = Qt.UserRole + 50
+
+class SortableTableWidgetItem(QTableWidgetItem):
+    def __lt__(self, other):
+        left = self.data(SORT_ROLE)
+        right = other.data(SORT_ROLE) if other is not None else None
+        if left is not None and right is not None:
+            return left < right
+        return super().__lt__(other)
 
 class MedicalApp(QMainWindow):
     def __init__(self):
@@ -514,8 +526,39 @@ class MedicalApp(QMainWindow):
             return QColor(245, 240, 210)
         return None
 
+    def _date_sort_value(self, value):
+        value = (value or "").strip()
+        for fmt in ("%d.%m.%Y", "%Y-%m-%d"):
+            try:
+                return int(datetime.strptime(value[:10], fmt).strftime("%Y%m%d"))
+            except Exception:
+                pass
+        return -1
+
+    def _natural_sort_value(self, value):
+        parts = re.split(r'(\d+)', value or "")
+        return tuple(int(part) if part.isdigit() else part.lower() for part in parts)
+
+    def _case_sort_value(self, table, col, text):
+        is_archive = table is self.archive_tree
+        date_columns = {0, 1} if is_archive else {0}
+        dob_col = 4 if is_archive else 3
+        card_col = 2 if is_archive else 1
+        days_col = 7 if is_archive else 5
+        if col in date_columns or col == dob_col:
+            return (0, self._date_sort_value(text))
+        if col == card_col:
+            return (1, self._natural_sort_value(text))
+        if col == days_col:
+            try:
+                return (2, int(text))
+            except (TypeError, ValueError):
+                return (2, -1)
+        return (3, (text or "").lower())
+
     def _set_case_item(self, table, row, col, text, summary, color=None):
-        item = QTableWidgetItem(text)
+        item = SortableTableWidgetItem(text)
+        item.setData(SORT_ROLE, self._case_sort_value(table, col, text))
         item.setData(Qt.UserRole, summary["patient_id"])
         item.setData(Qt.UserRole + 1, summary["case_id"])
         item.setData(Qt.UserRole + 2, summary["card_number"])
@@ -758,28 +801,7 @@ class NewPatientDialog(QDialog):
         layout.addWidget(QLabel("Адрес фактического проживания"))
         self.city_combo = QComboBox()
         self.city_combo.setEditable(True)
-        pmr_cities = [
-            "",
-            "Тирасполь",
-            "Бендеры",
-            "Рыбница",
-            "Дубоссары",
-            "Слободзея",
-            "Григориополь",
-            "Каменка",
-            "Днестровск",
-            "Парканы",
-            "Гиска",
-            "Суклея",
-            "Косница",
-            "Бутучаны",
-            "Бычок",
-            "Маяк",
-            "Глиное",
-            "Сергиевка",
-            "Первомайск",
-            "Солнечное",
-        ]
+        pmr_cities = get_cities()
         self.city_combo.addItems(pmr_cities)
         from PySide6.QtWidgets import QCompleter
         city_completer = QCompleter(pmr_cities, self.city_combo)
@@ -790,21 +812,7 @@ class NewPatientDialog(QDialog):
 
         self.street_combo = QComboBox()
         self.street_combo.setEditable(True)
-        pmr_streets = [
-            "",
-            "ул. Ленина",
-            "ул. 25 Октября",
-            "ул. Карла Либкнехта",
-            "ул. Краснодонская",
-            "ул. Комсомольская",
-            "ул. Чернышевского",
-            "ул. Шевченко",
-            "ул. Одесская",
-            "ул. Киевская",
-            "ул. Транспортная",
-            "ул. Советская",
-            "ул. Гагарина",
-        ]
+        pmr_streets = get_streets()
         self.street_combo.addItems(pmr_streets)
         street_completer = QCompleter(pmr_streets, self.street_combo)
         street_completer.setCaseSensitivity(Qt.CaseInsensitive)
@@ -840,6 +848,7 @@ class NewPatientDialog(QDialog):
         apartment = ''
         if surname:
             self.db.add_patient(surname, name, dob, city=city, street=street, house=house, apartment=apartment)
+            remember_address(city, street)
             parent = self.parent()
             try:
                 if parent is not None and hasattr(parent, 'load_patients'):

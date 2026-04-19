@@ -27,6 +27,8 @@ from PySide6.QtWidgets import (
     QDateEdit,
 )
 
+from address_book import get_cities, get_streets, remember_address
+
 
 @dataclass(frozen=True)
 class WizardPatient:
@@ -230,6 +232,7 @@ class CreateHistoryWizard(QDialog):
                 apartment=apartment,
                 patronymic=dialog.patronymic,
             )
+            remember_address(city or '', street or '')
             self._reload_patients()
             self._select_patient_in_tree(patient_id)
             try:
@@ -319,6 +322,7 @@ class CreateHistoryWizard(QDialog):
                 apartment=apartment,
                 patronymic=dialog.patronymic,
             )
+            remember_address(city or '', street or '')
             self._reload_patients()
             self._select_patient_in_tree(int(patient_id))
             try:
@@ -466,28 +470,7 @@ class CreateHistoryWizard(QDialog):
         addr_grid.addWidget(QLabel("Населенный пункт"), 0, 0)
         self.city_combo = QComboBox()
         self.city_combo.setEditable(True)
-        pmr_cities = [
-            "",
-            "Тирасполь",
-            "Бендеры",
-            "Рыбница",
-            "Дубоссары",
-            "Слободзея",
-            "Григориополь",
-            "Каменка",
-            "Днестровск",
-            "Парканы",
-            "Гиска",
-            "Суклея",
-            "Косница",
-            "Бутучаны",
-            "Бычок",
-            "Маяк",
-            "Глиное",
-            "Сергиевка",
-            "Первомайск",
-            "Солнечное",
-        ]
+        pmr_cities = get_cities()
         self.city_combo.addItems(pmr_cities)
         city_completer = QCompleter(pmr_cities, self.city_combo)
         city_completer.setCaseSensitivity(Qt.CaseInsensitive)
@@ -498,25 +481,7 @@ class CreateHistoryWizard(QDialog):
         addr_grid.addWidget(QLabel("Улица"), 1, 0)
         self.street_combo = QComboBox()
         self.street_combo.setEditable(True)
-        pmr_streets = [
-            "",
-            "ул. Ленина",
-            "ул. 25 Октября",
-            "ул. 25 Октября",
-            "ул. Карла Либкнехта",
-            "ул. Краснодонская",
-            "ул. Комсомольская",
-            "ул. Чернышевского",
-            "ул. Шевченко",
-            "ул. Одесская",
-            "ул. Киевская",
-            "ул. Транспортная",
-            "ул. Советская",
-            "ул. Гагарина",
-            "ул. Интернациональная",
-            "ул. Юности",
-            "пер. Школьный",
-        ]
+        pmr_streets = get_streets()
         self.street_combo.addItems(pmr_streets)
         street_completer = QCompleter(pmr_streets, self.street_combo)
         street_completer.setCaseSensitivity(Qt.CaseInsensitive)
@@ -602,6 +567,25 @@ class CreateHistoryWizard(QDialog):
             return
 
         try:
+            patient = self.db.get_patient_by_id(self.patient_id)
+            if patient:
+                city = self.city_combo.currentText().strip()
+                street = self.street_combo.currentText().strip()
+                house = self.house_edit.text().strip()
+                apartment = patient[8] if len(patient) > 8 and patient[8] else ''
+                self.db.update_patient(
+                    self.patient_id,
+                    patient[1] or '',
+                    patient[2] or '',
+                    patient[3] or '',
+                    city=city,
+                    street=street,
+                    house=house,
+                    apartment=apartment,
+                    patronymic=patient[9] if len(patient) > 9 else '',
+                )
+                remember_address(city, street)
+
             # Сохраняем паспортную часть истории болезни
             passport_info = (
                 f"Номер карты: {self.card_number_edit.text().strip()}\n"
@@ -721,28 +705,7 @@ class _PatientEditDialog(QDialog):
         grid.addWidget(QLabel("Город/населенный пункт"), 2, 0)
         self._city_combo = QComboBox()
         self._city_combo.setEditable(True)
-        pmr_cities = [
-            "",
-            "Тирасполь",
-            "Бендеры",
-            "Рыбница",
-            "Дубоссары",
-            "Слободзея",
-            "Григориополь",
-            "Каменка",
-            "Днестровск",
-            "Парканы",
-            "Гиска",
-            "Суклея",
-            "Косница",
-            "Бутучаны",
-            "Бычок",
-            "Маяк",
-            "Глиное",
-            "Сергиевка",
-            "Первомайск",
-            "Солнечное",
-        ]
+        pmr_cities = get_cities()
         self._city_combo.addItems(pmr_cities)
         try:
             completer = QCompleter(pmr_cities, self._city_combo)
@@ -756,21 +719,7 @@ class _PatientEditDialog(QDialog):
         grid.addWidget(QLabel("Улица"), 2, 2)
         self._street_combo = QComboBox()
         self._street_combo.setEditable(True)
-        pmr_streets = [
-            "",
-            "ул. Ленина",
-            "ул. 25 Октября",
-            "ул. Карла Либкнехта",
-            "ул. Краснодонская",
-            "ул. Комсомольская",
-            "ул. Чернышевского",
-            "ул. Шевченко",
-            "ул. Одесская",
-            "ул. Киевская",
-            "ул. Транспортная",
-            "ул. Советская",
-            "ул. Гагарина",
-        ]
+        pmr_streets = get_streets()
         self._street_combo.addItems(pmr_streets)
         try:
             street_comp = QCompleter(pmr_streets, self._street_combo)
