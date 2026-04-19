@@ -4,6 +4,7 @@ from datetime import datetime
 class Database:
     def __init__(self, db_name='patients.db'):
         self.conn = sqlite3.connect(db_name)
+        self.conn.execute('PRAGMA foreign_keys = ON')
         self.create_tables()
 
     def create_tables(self):
@@ -20,6 +21,25 @@ class Database:
                 house TEXT,
                 apartment TEXT,
                 patronymic TEXT
+            )
+        ''')
+        self.conn.execute('''
+            CREATE TABLE IF NOT EXISTS medical_cases (
+                id INTEGER PRIMARY KEY,
+                patient_id INTEGER NOT NULL,
+                card_number TEXT NOT NULL,
+                admission_date TEXT,
+                admission_time TEXT,
+                discharge_date TEXT,
+                discharge_time TEXT,
+                outcome TEXT,
+                status TEXT NOT NULL DEFAULT 'active',
+                final_diagnosis TEXT,
+                discharge_summary TEXT,
+                recommendations TEXT,
+                created_at TEXT,
+                closed_at TEXT,
+                FOREIGN KEY (patient_id) REFERENCES patients (id)
             )
         ''')
         self.conn.execute('''
@@ -53,6 +73,18 @@ class Database:
                 FOREIGN KEY (history_id) REFERENCES histories (id)
             )
         ''')
+        self.conn.execute('''
+            CREATE TABLE IF NOT EXISTS diagnostics (
+                id INTEGER PRIMARY KEY,
+                patient_id INTEGER NOT NULL,
+                history_id INTEGER,
+                study_date TEXT,
+                name TEXT,
+                results TEXT,
+                created_at TEXT,
+                FOREIGN KEY (patient_id) REFERENCES patients (id)
+            )
+        ''')
         # Add record_type column if it doesn't exist (for migration)
         try:
             self.conn.execute('ALTER TABLE histories ADD COLUMN record_type TEXT DEFAULT ""')
@@ -78,7 +110,44 @@ class Database:
             self.conn.execute('ALTER TABLE patients ADD COLUMN patronymic TEXT DEFAULT ""')
         except sqlite3.OperationalError:
             pass
+        self._migrate_medical_cases()
         self.conn.commit()
+
+    def _migrate_medical_cases(self):
+        self.conn.execute('''
+            INSERT OR IGNORE INTO medical_cases (
+                id, patient_id, card_number, admission_date, admission_time,
+                outcome, status, final_diagnosis, created_at
+            )
+            SELECT
+                h.history_id,
+                h.patient_id,
+                CAST(h.history_id AS TEXT),
+                '',
+                '',
+                '',
+                'active',
+                COALESCE(MAX(NULLIF(h.diag_clinical, '')), MAX(NULLIF(h.diag_admission, '')), ''),
+                MIN(h.visit_date)
+            FROM histories h
+            WHERE h.history_id IS NOT NULL
+            GROUP BY h.history_id, h.patient_id
+        ''')
+        cursor = self.conn.execute('SELECT DISTINCT patient_id FROM histories WHERE history_id IS NULL')
+        for (patient_id,) in cursor.fetchall():
+            created_at = datetime.now().isoformat()
+            next_number = self.get_next_history_number()
+            case_cursor = self.conn.execute(
+                '''INSERT INTO medical_cases (
+                       patient_id, card_number, admission_date, admission_time,
+                       outcome, status, final_diagnosis, created_at
+                   ) VALUES (?, ?, '', '', '', 'active', '', ?)''',
+                (patient_id, str(next_number), created_at),
+            )
+            self.conn.execute(
+                'UPDATE histories SET history_id = ? WHERE patient_id = ? AND history_id IS NULL',
+                (case_cursor.lastrowid, patient_id),
+            )
 
     def add_patient(self, surname, name='', dob='', city='', street='', house='', apartment='', patronymic=''):
         created_at = datetime.now().isoformat()
@@ -88,6 +157,79 @@ class Database:
         )
         self.conn.commit()
         return cursor.lastrowid
+
+    def create_medical_case(self, patient_id, card_number, admission_date='', admission_time='', final_diagnosis=''):
+        created_at = datetime.now().isoformat()
+        cursor = self.conn.execute(
+            '''INSERT INTO medical_cases (
+                   patient_id, card_number, admission_date, admission_time,
+                   status, final_diagnosis, created_at
+               ) VALUES (?, ?, ?, ?, 'active', ?, ?)''',
+            (patient_id, card_number, admission_date, admission_time, final_diagnosis, created_at),
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def get_case_by_id(self, case_id):
+        cursor = self.conn.execute(
+            '''SELECT id, patient_id, card_number, admission_date, admission_time,
+                      discharge_date, discharge_time, outcome, status,
+                      final_diagnosis, discharge_summary, recommendations,
+                      created_at, closed_at
+               FROM medical_cases WHERE id = ?''',
+            (case_id,),
+        )
+        return cursor.fetchone()
+
+    def get_cases(self, status=None):
+        params = []
+        where = ''
+        if status:
+            where = 'WHERE c.status = ?'
+            params.append(status)
+        cursor = self.conn.execute(
+            f'''SELECT
+                    c.id, c.patient_id, c.card_number, c.admission_date, c.admission_time,
+                    c.discharge_date, c.discharge_time, c.outcome, c.status,
+                    c.final_diagnosis, c.discharge_summary, c.recommendations,
+                    c.created_at, c.closed_at,
+                    p.surname, p.name, p.dob, p.patronymic
+                FROM medical_cases c
+                JOIN patients p ON p.id = c.patient_id
+                {where}
+                ORDER BY COALESCE(c.closed_at, c.created_at) DESC, c.id DESC''',
+            params,
+        )
+        return cursor.fetchall()
+
+    def update_case_admission(self, case_id, card_number, admission_date='', admission_time='', final_diagnosis=''):
+        self.conn.execute(
+            '''UPDATE medical_cases
+               SET card_number = ?, admission_date = ?, admission_time = ?, final_diagnosis = ?
+               WHERE id = ?''',
+            (card_number, admission_date, admission_time, final_diagnosis, case_id),
+        )
+        self.conn.commit()
+
+    def discharge_case(self, case_id, discharge_date='', discharge_time='', outcome='', final_diagnosis='', discharge_summary='', recommendations=''):
+        closed_at = datetime.now().isoformat()
+        self.conn.execute(
+            '''UPDATE medical_cases
+               SET discharge_date = ?, discharge_time = ?, outcome = ?, status = 'archived',
+                   final_diagnosis = ?, discharge_summary = ?, recommendations = ?, closed_at = ?
+               WHERE id = ?''',
+            (discharge_date, discharge_time, outcome, final_diagnosis, discharge_summary, recommendations, closed_at, case_id),
+        )
+        self.conn.commit()
+
+    def reopen_case(self, case_id):
+        self.conn.execute(
+            '''UPDATE medical_cases
+               SET status = 'active', closed_at = NULL
+               WHERE id = ?''',
+            (case_id,),
+        )
+        self.conn.commit()
 
     def get_patients(self):
         cursor = self.conn.execute('SELECT * FROM patients ORDER BY surname')
@@ -113,6 +255,26 @@ class Database:
         self.conn.commit()
         return cursor.lastrowid
 
+    def get_history_record(self, patient_id, record_type, logical_history_id=None):
+        if logical_history_id is None:
+            cursor = self.conn.execute(
+                'SELECT id, patient_id, visit_date, record_type, examination, diagnosis, treatment, notes, diag_admission, diag_clinical, diag_comorbid, history_id FROM histories WHERE patient_id = ? AND record_type = ? ORDER BY visit_date DESC LIMIT 1',
+                (patient_id, record_type),
+            )
+        else:
+            cursor = self.conn.execute(
+                'SELECT id, patient_id, visit_date, record_type, examination, diagnosis, treatment, notes, diag_admission, diag_clinical, diag_comorbid, history_id FROM histories WHERE patient_id = ? AND record_type = ? AND history_id = ? ORDER BY visit_date DESC LIMIT 1',
+                (patient_id, record_type, logical_history_id),
+            )
+        return cursor.fetchone()
+
+    def has_primary_exam(self, patient_id, logical_history_id=None):
+        if logical_history_id is None:
+            cursor = self.conn.execute('SELECT 1 FROM histories WHERE patient_id = ? AND record_type = "primary_exam" LIMIT 1', (patient_id,))
+        else:
+            cursor = self.conn.execute('SELECT 1 FROM histories WHERE patient_id = ? AND record_type = "primary_exam" AND history_id = ? LIMIT 1', (patient_id, logical_history_id))
+        return cursor.fetchone() is not None
+
     def get_appointments(self, history_id):
         cursor = self.conn.execute('SELECT id, history_id, name, method, freq, date_assign, date_cancel, created_at FROM appointments WHERE history_id = ? ORDER BY id', (history_id,))
         return cursor.fetchall()
@@ -126,6 +288,17 @@ class Database:
                WHERE h.patient_id = ?
                ORDER BY a.created_at, a.id''',
             (patient_id,)
+        )
+        return cursor.fetchall()
+
+    def get_appointments_for_logical_history(self, patient_id, logical_history_id):
+        cursor = self.conn.execute(
+            '''SELECT a.id, a.history_id, a.name, a.method, a.freq, a.date_assign, a.date_cancel, a.created_at
+               FROM appointments a
+               JOIN histories h ON a.history_id = h.id
+               WHERE h.patient_id = ? AND h.history_id = ?
+               ORDER BY a.created_at, a.id''',
+            (patient_id, logical_history_id)
         )
         return cursor.fetchall()
 
@@ -150,7 +323,13 @@ class Database:
         self.conn.commit()
 
     def delete_patient(self, patient_id):
+        self.conn.execute('''
+            DELETE FROM appointments
+            WHERE history_id IN (SELECT id FROM histories WHERE patient_id = ?)
+        ''', (patient_id,))
+        self.conn.execute('DELETE FROM diagnostics WHERE patient_id = ?', (patient_id,))
         self.conn.execute('DELETE FROM histories WHERE patient_id = ?', (patient_id,))
+        self.conn.execute('DELETE FROM medical_cases WHERE patient_id = ?', (patient_id,))
         self.conn.execute('DELETE FROM patients WHERE id = ?', (patient_id,))
         self.conn.commit()
 
@@ -161,10 +340,6 @@ class Database:
     def get_history_by_id(self, record_id):
         cursor = self.conn.execute('SELECT id, patient_id, visit_date, record_type, examination, diagnosis, treatment, notes, diag_admission, diag_clinical, diag_comorbid, history_id FROM histories WHERE id = ?', (record_id,))
         return cursor.fetchone()
-
-    def has_primary_exam(self, patient_id):
-        cursor = self.conn.execute('SELECT 1 FROM histories WHERE patient_id = ? AND record_type = "primary_exam" LIMIT 1', (patient_id,))
-        return cursor.fetchone() is not None
 
     def update_history(self, history_id_row, record_type, examination, diagnosis, treatment, notes, visit_date=None, diag_admission='', diag_clinical='', diag_comorbid='', logical_history_id=None):
         if visit_date is not None:
@@ -193,13 +368,48 @@ class Database:
             DELETE FROM appointments 
             WHERE history_id IN (SELECT id FROM histories WHERE history_id = ?)
         ''', (history_id,))
+        self.conn.execute('DELETE FROM diagnostics WHERE history_id = ?', (history_id,))
         # Затем сами записи
         self.conn.execute('DELETE FROM histories WHERE history_id = ?', (history_id,))
+        self.conn.execute('DELETE FROM medical_cases WHERE id = ?', (history_id,))
+        self.conn.commit()
+
+    def add_diagnostic(self, patient_id, logical_history_id, study_date='', name='', results=''):
+        created_at = datetime.now().isoformat()
+        cursor = self.conn.execute(
+            'INSERT INTO diagnostics (patient_id, history_id, study_date, name, results, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+            (patient_id, logical_history_id, study_date, name, results, created_at),
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def get_diagnostics(self, patient_id, logical_history_id=None):
+        if logical_history_id is None:
+            cursor = self.conn.execute(
+                'SELECT id, patient_id, history_id, study_date, name, results, created_at FROM diagnostics WHERE patient_id = ? ORDER BY created_at, id',
+                (patient_id,),
+            )
+        else:
+            cursor = self.conn.execute(
+                'SELECT id, patient_id, history_id, study_date, name, results, created_at FROM diagnostics WHERE patient_id = ? AND history_id = ? ORDER BY created_at, id',
+                (patient_id, logical_history_id),
+            )
+        return cursor.fetchall()
+
+    def update_diagnostic(self, diagnostic_id, study_date='', name='', results=''):
+        self.conn.execute(
+            'UPDATE diagnostics SET study_date = ?, name = ?, results = ? WHERE id = ?',
+            (study_date, name, results, diagnostic_id),
+        )
+        self.conn.commit()
+
+    def delete_diagnostic(self, diagnostic_id):
+        self.conn.execute('DELETE FROM diagnostics WHERE id = ?', (diagnostic_id,))
         self.conn.commit()
 
     def get_next_history_number(self) -> int:
         """Возвращает следующий номер истории болезни (history_id), начиная с 1."""
-        cursor = self.conn.execute('SELECT COALESCE(MAX(history_id), 0) + 1 FROM histories')
+        cursor = self.conn.execute('SELECT COALESCE(MAX(id), 0) + 1 FROM medical_cases')
         row = cursor.fetchone()
         return int(row[0]) if row and row[0] is not None else 1
 

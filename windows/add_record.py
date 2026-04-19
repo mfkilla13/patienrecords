@@ -1,3 +1,4 @@
+import html
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton, QTextEdit, QMessageBox
 from PySide6.QtCore import Qt
 
@@ -71,6 +72,8 @@ class AddRecordWindow(QDialog):
             self.open_diary(self.patient_id, self.records_table)
         elif template == "План обследования и лечения":
             self.open_plan(self.patient_id, self.records_table)
+        elif template == "Выписной эпикриз":
+            self.open_discharge_summary()
         else:
             self.open_add_record_window(template)
         
@@ -105,6 +108,15 @@ class AddRecordWindow(QDialog):
             dlg = QDialog(self.parent())
             dlg.setWindowTitle("План обследования и лечения")
             dlg.show()
+
+    def open_discharge_summary(self):
+        anc = self.parent()
+        while anc is not None and not hasattr(anc, 'discharge_patient'):
+            anc = anc.parent()
+        if anc is not None:
+            anc.discharge_patient()
+        else:
+            QMessageBox.warning(self, "Ошибка", "Не удалось открыть форму выписки.")
 
     def open_add_record_window(self, template):
         dlg = AddRecordDialog(self, self.db, self.patient_id, template, self.records_table, self.load_records_list, history_id=self.history_id)
@@ -145,7 +157,8 @@ class AddRecordDialog(QDialog):
     def save_record(self):
         record = self.record_text.toPlainText().strip()
         if record:
-            self.db.add_history(self.patient_id, "other", f"{self.template}: {record}", "", "", "", history_id=self.history_id)
+            safe_record = html.escape(f"{self.template}: {record}").replace("\n", "<br>")
+            self.db.add_history(self.patient_id, "other", safe_record, "", "", "", history_id=self.history_id)
             QMessageBox.information(self, "Успех", "Запись добавлена.")
             self.load_records_list(self.records_table, self.patient_id)
             self.accept()

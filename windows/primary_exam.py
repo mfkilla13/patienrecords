@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import html
 from .config import LOCAL_ROWS_CONFIG
 from PySide6.QtWidgets import (
     QDialog,
@@ -24,6 +25,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
 )
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QShortcut, QKeySequence
 
 
 class MultiSelectDialog(QDialog):
@@ -45,6 +47,12 @@ class MultiSelectDialog(QDialog):
         self._note_text = note_text or ""
 
         main = QVBoxLayout(self)
+        top_bar = QHBoxLayout()
+        top_bar.addStretch(1)
+        top_ok = QPushButton("ОК")
+        top_ok.clicked.connect(self.accept)
+        top_bar.addWidget(top_ok)
+        main.addLayout(top_bar)
 
         # чекбоксы
         self.checkboxes = []
@@ -61,11 +69,16 @@ class MultiSelectDialog(QDialog):
         btns = QHBoxLayout()
         btn_cancel = QPushButton("Отмена")
         btn_ok = QPushButton("ОК")
+        btn_ok.setDefault(True)
+        btn_ok.setAutoDefault(True)
         btn_cancel.clicked.connect(self.reject)
         btn_ok.clicked.connect(self.accept)
         btns.addWidget(btn_cancel)
         btns.addWidget(btn_ok)
         main.addLayout(btns)
+        QShortcut(QKeySequence(Qt.Key_Return), self, activated=self.accept)
+        QShortcut(QKeySequence(Qt.Key_Enter), self, activated=self.accept)
+        QShortcut(QKeySequence(Qt.Key_Escape), self, activated=self.reject)
 
     def get_result(self):
         selected = [cb.text() for cb in self.checkboxes if cb.isChecked()]
@@ -92,6 +105,12 @@ class EnhancedMultiSelectDialog(QDialog):
         self._category = category
 
         main = QVBoxLayout(self)
+        top_bar = QHBoxLayout()
+        top_bar.addStretch(1)
+        top_ok = QPushButton("ОК")
+        top_ok.clicked.connect(self.accept)
+        top_bar.addWidget(top_ok)
+        main.addLayout(top_bar)
 
         # Верхняя часть: доступные и выбранные списки
         lists_layout = QHBoxLayout()
@@ -157,11 +176,16 @@ class EnhancedMultiSelectDialog(QDialog):
         btns = QHBoxLayout()
         btn_cancel = QPushButton("Отмена")
         btn_ok = QPushButton("ОК")
+        btn_ok.setDefault(True)
+        btn_ok.setAutoDefault(True)
         btn_cancel.clicked.connect(self.reject)
         btn_ok.clicked.connect(self.accept)
         btns.addWidget(btn_cancel)
         btns.addWidget(btn_ok)
         main.addLayout(btns)
+        QShortcut(QKeySequence(Qt.Key_Return), self, activated=self.accept)
+        QShortcut(QKeySequence(Qt.Key_Enter), self, activated=self.accept)
+        QShortcut(QKeySequence(Qt.Key_Escape), self, activated=self.reject)
 
     def _add_selected(self):
         current = self.available_list.currentItem()
@@ -523,8 +547,8 @@ class PrimaryExamWindow(QDialog):
         comp_tag3.clicked.connect(lambda: self.insert_tag(self.complaints_text, "в"))
         complaints_tags_layout.addWidget(comp_tag3)
 
-        comp_tag4 = QPushButton("обеих глазах")
-        comp_tag4.clicked.connect(lambda: self.insert_tag(self.complaints_text, "обеих глазах"))
+        comp_tag4 = QPushButton("обоих глазах")
+        comp_tag4.clicked.connect(lambda: self.insert_tag(self.complaints_text, "обоих глазах"))
         complaints_tags_layout.addWidget(comp_tag4)
 
         comp_tag5 = QPushButton("правом глазу")
@@ -977,6 +1001,25 @@ class PrimaryExamWindow(QDialog):
         local_layout.addSpacing(20)
 
         # ─── Таблица параметров ─────────────────────────────────────────────
+        quick_status_layout = QHBoxLayout()
+        ou_norm_btn = QPushButton("OU норма")
+        ou_norm_btn.clicked.connect(lambda: self.apply_local_norm("OU"))
+        quick_status_layout.addWidget(ou_norm_btn)
+        od_norm_btn = QPushButton("OD норма")
+        od_norm_btn.clicked.connect(lambda: self.apply_local_norm("OD"))
+        quick_status_layout.addWidget(od_norm_btn)
+        os_norm_btn = QPushButton("OS норма")
+        os_norm_btn.clicked.connect(lambda: self.apply_local_norm("OS"))
+        quick_status_layout.addWidget(os_norm_btn)
+        copy_od_os_btn = QPushButton("OD → OS")
+        copy_od_os_btn.clicked.connect(lambda: self.copy_local_status("OD", "OS"))
+        quick_status_layout.addWidget(copy_od_os_btn)
+        copy_os_od_btn = QPushButton("OS → OD")
+        copy_os_od_btn.clicked.connect(lambda: self.copy_local_status("OS", "OD"))
+        quick_status_layout.addWidget(copy_os_od_btn)
+        quick_status_layout.addStretch(1)
+        local_layout.addLayout(quick_status_layout)
+
         local_grid = QGridLayout()
         local_grid.setHorizontalSpacing(15)
         local_grid.setVerticalSpacing(8)
@@ -1422,6 +1465,57 @@ class PrimaryExamWindow(QDialog):
                     retina_btn._selected.append("не просматривается")
                     retina_btn._refresh_text()
 
+    def _set_multiselect_values(self, widget, values):
+        if hasattr(widget, "_selected"):
+            widget._selected = list(values)
+            widget._refresh_text()
+
+    def _get_multiselect_values(self, widget):
+        if hasattr(widget, "_selected"):
+            return list(widget._selected)
+        return []
+
+    def _set_local_eye_norm(self, eye):
+        idx = 0 if eye == "OD" else 1
+        norm_values = {
+            "Веки": ["без особенностей"],
+            "Конъюнктива": ["бледно-розовая"],
+            "Склера/эписклера": ["без особенностей"],
+            "Роговица": ["прозрачная"],
+            "Зрачок": ["круглый"],
+            "Радужка": ["рисунок чёткий"],
+            "Хрусталик": ["прозрачный"],
+            "Стекловидное тело": ["прозрачное"],
+            "Глазное дно": ["ДЗН бледно-розовый", "контуры чёткие", "макула без особенностей"],
+            "Сосуды": ["артерии в норме"],
+            "Сетчатка": ["прилежит"],
+        }
+        for label, values in norm_values.items():
+            if label in self.local_status_fields:
+                self._set_multiselect_values(self.local_status_fields[label][idx], values)
+        if "Передняя камера" in self.local_status_fields:
+            depth, fluid = self.local_status_fields["Передняя камера"][idx]
+            depth.setCurrentText("нормальная")
+            fluid.setCurrentText("прозрачная")
+
+    def apply_local_norm(self, eye):
+        if eye in ("OD", "OU"):
+            self._set_local_eye_norm("OD")
+        if eye in ("OS", "OU"):
+            self._set_local_eye_norm("OS")
+
+    def copy_local_status(self, source_eye, target_eye):
+        source_idx = 0 if source_eye == "OD" else 1
+        target_idx = 0 if target_eye == "OD" else 1
+        for label, widgets in self.local_status_fields.items():
+            if label == "Передняя камера":
+                source_depth, source_fluid = widgets[source_idx]
+                target_depth, target_fluid = widgets[target_idx]
+                target_depth.setCurrentText(source_depth.currentText())
+                target_fluid.setCurrentText(source_fluid.currentText())
+            else:
+                self._set_multiselect_values(widgets[target_idx], self._get_multiselect_values(widgets[source_idx]))
+
     def insert_tag(self, text_edit, tag):
         current = text_edit.toPlainText().strip()
         text_edit.setPlainText((current + " " + tag).strip() if current else tag)
@@ -1670,37 +1764,49 @@ class PrimaryExamWindow(QDialog):
                 </td>
                 '''
                 
-                # Обработка коррекции для OD и OS отдельно
-                has_od_corr = (vis_correction_od == 'с коррекцией')
-                has_os_corr = (vis_correction_os == 'с коррекцией')
-                
-                if has_od_corr or has_os_corr:
-                    # Показываем коррекцию для обоих глаз
+                # Обработка коррекции для OD и OS отдельно. Печатаем любой выбранный
+                # статус, а линзу и итог показываем только для "с коррекцией".
+                def _vis_status(text):
+                    return "" if text in ("пусто", "") else html.escape(text)
+
+                od_status = _vis_status(vis_correction_od)
+                os_status = _vis_status(vis_correction_os)
+                has_od_corr = (vis_correction_od == "с коррекцией")
+                has_os_corr = (vis_correction_os == "с коррекцией")
+
+                def _diopter_text(value):
+                    value = value.strip()
+                    if not value:
+                        return ""
+                    escaped = html.escape(value)
+                    return escaped if escaped.endswith(("D", "d", "дптр", "Дптр")) else f"{escaped} D"
+
+                if od_status or os_status:
                     vis_html += f'''
                 <td style="text-align:center; padding:0 8px; vertical-align:middle;">
                     <table border="0" cellpadding="2" cellspacing="0">
-                        <tr><td style="text-align:center;">{vis_correction_od if has_od_corr else ' '}</td></tr>
-                        <tr><td style="text-align:center;">{vis_correction_os if has_os_corr else ' '}</td></tr>
+                        <tr><td style="text-align:center; border-bottom:1px solid black;">{od_status or ' '}</td></tr>
+                        <tr><td style="text-align:center;">{os_status or ' '}</td></tr>
                     </table>
                 </td>
+                    '''
+
+                if has_od_corr or has_os_corr:
+                    vis_html += f'''
                 <td style="text-align:center; padding:0 5px; vertical-align:middle;">
                     <table border="0" cellpadding="2" cellspacing="0">
-                        <tr><td style="text-align:center; border-bottom:1px solid black;">{vis_od_corr or ' '}</td></tr>
-                        <tr><td style="text-align:center;">{vis_os_corr or ' '}</td></tr>
+                        <tr><td style="text-align:center; border-bottom:1px solid black;">{_diopter_text(vis_od_corr) if has_od_corr and vis_od_corr else ' '}</td></tr>
+                        <tr><td style="text-align:center;">{_diopter_text(vis_os_corr) if has_os_corr and vis_os_corr else ' '}</td></tr>
                     </table>
                 </td>
                 <td style="text-align:center; padding:0 5px; vertical-align:middle;">=</td>
                 <td style="text-align:center; padding:0 5px; vertical-align:middle;">
                     <table border="0" cellpadding="2" cellspacing="0">
-                        <tr><td style="text-align:center; border-bottom:1px solid black;">{vis_od_result or ' '}</td></tr>
-                        <tr><td style="text-align:center;">{vis_os_result or ' '}</td></tr>
+                        <tr><td style="text-align:center; border-bottom:1px solid black;">{html.escape(vis_od_result) if has_od_corr and vis_od_result else ' '}</td></tr>
+                        <tr><td style="text-align:center;">{html.escape(vis_os_result) if has_os_corr and vis_os_result else ' '}</td></tr>
                     </table>
                 </td>
                     '''
-                elif vis_correction_od not in ('пусто', ''):
-                    vis_html += f'<td style="text-align:center; padding:0 8px; vertical-align:middle;">{vis_correction_od}</td>'
-                elif vis_correction_os not in ('пусто', ''):
-                    vis_html += f'<td style="text-align:center; padding:0 8px; vertical-align:middle;">{vis_correction_os}</td>'
                 vis_html += '<td style="padding:0 20px;"></td>'
                 html_lines.append(vis_html)
 

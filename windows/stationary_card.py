@@ -1,4 +1,5 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QTabWidget, QWidget as QtWidget, QListWidget, QMessageBox, QInputDialog, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QDialog
+import html
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QTabWidget, QWidget as QtWidget, QListWidget, QMessageBox, QInputDialog, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QDialog, QComboBox
 from PySide6.QtCore import Qt, QMarginsF, QDate
 from PySide6.QtGui import QTextDocument, QPageLayout, QTextCursor, QTextCharFormat, QFont, QTextTableFormat, QTextBlockFormat
 from PySide6.QtPrintSupport import QPrintPreviewDialog, QPrinter
@@ -10,16 +11,26 @@ from widgets.date_input import DateInput
 from widgets.time_input import TimeInput
 
 class StationaryCardPage(QWidget):
-    def __init__(self, parent, db, patient_id, patient, card_number):
+    def __init__(self, parent, db, patient_id, patient, card_number, case_id=None, read_only=False):
         super().__init__(parent)
         self.db = db
         self.patient_id = patient_id
         self.patient = patient
-        # card_number is the logical history_id
-        try:
-            self.history_id = int(card_number)
-        except Exception:
-            self.history_id = None
+        self.case = self.db.get_case_by_id(case_id) if case_id is not None else None
+        if self.case is None:
+            try:
+                self.case = self.db.get_case_by_id(int(card_number))
+            except Exception:
+                self.case = None
+        self.history_id = self.case[0] if self.case else None
+        if self.history_id is None:
+            try:
+                self.history_id = int(card_number)
+            except Exception:
+                self.history_id = None
+        if self.case:
+            card_number = self.case[2]
+        self.read_only = read_only or bool(self.case and self.case[8] == "archived")
         self.card_number = card_number
         # templates for appointments (shared within this window)
         self.appointment_templates = ["стол 15", "стол 9", "стол 14", "режим общий", "режим постельный"]
@@ -39,9 +50,17 @@ class StationaryCardPage(QWidget):
                 dob_formatted = d.toString("dd.MM.yyyy")
             else:
                 dob_formatted = self.patient[3]
-        header_label = QLabel(f"Стационарная карта №{self.card_number} {self.patient[2] or ''} {self.patient[9] if len(self.patient) > 9 else ''} {self.patient[1]} {dob_formatted}".strip())
+        status_text = " Архив" if self.read_only else ""
+        header_label = QLabel(f"Стационарная карта №{self.card_number}{status_text} {self.patient[2] or ''} {self.patient[9] if len(self.patient) > 9 else ''} {self.patient[1]} {dob_formatted}".strip())
         header_label.setStyleSheet("font-weight: bold; font-size: 14px;")
         layout.addWidget(header_label)
+        top_actions = QHBoxLayout()
+        top_actions.addStretch(1)
+        self.discharge_button = QPushButton("Выписать пациента")
+        self.discharge_button.clicked.connect(self.discharge_patient)
+        self.discharge_button.setVisible(not self.read_only)
+        top_actions.addWidget(self.discharge_button)
+        layout.addLayout(top_actions)
 
         # Извлечь данные из последней истории
         histories = self.db.get_histories(self.patient_id)
@@ -57,7 +76,7 @@ class StationaryCardPage(QWidget):
         if histories:
             for h in histories:
                 # h: (id, patient_id, visit_date, record_type, examination, diagnosis, treatment, notes, diag_adm, diag_clin, diag_com)
-                if h[3] == "passport":
+                if h[3] == "passport" and (self.history_id is None or h[11] == self.history_id):
                     passport_record_text = h[4]
                     passport_data_obj = h
                     break
@@ -102,7 +121,7 @@ class StationaryCardPage(QWidget):
 
         self.admission_time = admission_time
         for h in histories:
-            if h[3] == "primary_exam":
+            if h[3] == "primary_exam" and (self.history_id is None or h[11] == self.history_id):
                 if h[9]: clinical_diag = h[9]
                 break
 
@@ -110,7 +129,8 @@ class StationaryCardPage(QWidget):
         layout.addWidget(self.tab_widget)
 
         # Header Update (now we have the real card number)
-        header_label.setText(f"Стационарная карта №{self.card_number} {self.patient[2] or ''} {self.patient[9] if len(self.patient) > 9 else ''} {self.patient[1]} {dob_formatted}".strip())
+        status_text = " Архив" if self.read_only else ""
+        header_label.setText(f"Стационарная карта №{self.card_number}{status_text} {self.patient[2] or ''} {self.patient[9] if len(self.patient) > 9 else ''} {self.patient[1]} {dob_formatted}".strip())
         self.setAccessibleName(f"Стационарная карта №{self.card_number}")
 
         # Tab 1: Паспортная часть
@@ -263,6 +283,8 @@ class StationaryCardPage(QWidget):
             self.load_diagnostics(self.patient_id)
         except Exception:
             pass
+        if self.read_only:
+            self._apply_archive_mode()
 
     def save_passport_info(self):
         # Build a passport section text and save as a history record
@@ -276,12 +298,29 @@ class StationaryCardPage(QWidget):
         )
         diag_admission = self.admission_diag_entry.text().strip()
         diag_clinical = self.clinical_diag_entry.text().strip()
+        if self.history_id is not None:
+            self.db.update_case_admission(
+                self.history_id,
+                str(card_number),
+                self.admission_date_input.text().strip(),
+                self.admission_time_entry.text().strip(),
+                diag_clinical or diag_admission,
+            )
         
-        self.db.add_history(self.patient_id, "passport", passport_info, 
-                            diagnosis=diag_admission, 
-                            diag_admission=diag_admission,
-                            diag_clinical=diag_clinical,
-                            history_id=self.history_id)
+        existing = self.db.get_history_record(self.patient_id, "passport", self.history_id)
+        if existing:
+            self.db.update_history(
+                existing[0], "passport", passport_info, diag_admission, "", "",
+                diag_admission=diag_admission,
+                diag_clinical=diag_clinical,
+                logical_history_id=self.history_id,
+            )
+        else:
+            self.db.add_history(self.patient_id, "passport", passport_info,
+                                diagnosis=diag_admission,
+                                diag_admission=diag_admission,
+                                diag_clinical=diag_clinical,
+                                history_id=self.history_id)
         QMessageBox.information(self, "Успех", "Паспортная информация сохранена.")
         try:
             # refresh records list if present
@@ -295,6 +334,75 @@ class StationaryCardPage(QWidget):
                 parent._nav_back()
             except Exception:
                 pass
+
+    def discharge_patient(self):
+        if self.history_id is None:
+            QMessageBox.warning(self, "Ошибка", "Не удалось определить историю болезни.")
+            return
+        dialog = DischargeDialog(self, self.clinical_diag_entry.text().strip(), self.outcome_text.toPlainText().strip())
+        if dialog.exec() != QDialog.Accepted:
+            return
+        data = dialog.get_data()
+        reply = QMessageBox.question(
+            self,
+            "Подтверждение",
+            f"История болезни №{self.card_number} будет закрыта и перенесена в архив. Продолжить?",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        summary_html = (
+            f"<b>Дата выписки:</b> {html.escape(data['discharge_date'])} {html.escape(data['discharge_time'])}<br>"
+            f"<b>Исход:</b> {html.escape(data['outcome'])}<br>"
+            f"<b>Заключительный диагноз:</b> {html.escape(data['final_diagnosis'])}<br><br>"
+            f"<b>Выписной эпикриз:</b><br>{html.escape(data['summary']).replace(chr(10), '<br>')}<br><br>"
+            f"<b>Рекомендации:</b><br>{html.escape(data['recommendations']).replace(chr(10), '<br>')}"
+        )
+        self.db.discharge_case(
+            self.history_id,
+            data['discharge_date'],
+            data['discharge_time'],
+            data['outcome'],
+            data['final_diagnosis'],
+            data['summary'],
+            data['recommendations'],
+        )
+        existing = self.db.get_history_record(self.patient_id, "discharge_summary", self.history_id)
+        if existing:
+            self.db.update_history(
+                existing[0], "discharge_summary", summary_html, data['final_diagnosis'], "", data['recommendations'],
+                diag_clinical=data['final_diagnosis'],
+                logical_history_id=self.history_id,
+            )
+        else:
+            self.db.add_history(
+                self.patient_id, "discharge_summary", summary_html,
+                diagnosis=data['final_diagnosis'],
+                notes=data['recommendations'],
+                diag_clinical=data['final_diagnosis'],
+                history_id=self.history_id,
+            )
+        QMessageBox.information(self, "Готово", "Пациент выписан. История перенесена в архив.")
+        parent = self.parent()
+        while parent is not None and not hasattr(parent, '_nav_back'):
+            parent = parent.parent()
+        if parent is not None:
+            try:
+                if hasattr(parent, 'load_patients'):
+                    parent.load_patients()
+                parent._nav_back()
+            except Exception:
+                pass
+
+    def _apply_archive_mode(self):
+        for edit in self.findChildren(QLineEdit):
+            edit.setReadOnly(True)
+        for edit in self.findChildren(QTextEdit):
+            edit.setReadOnly(True)
+        for button in self.findChildren(QPushButton):
+            if button.text() not in ("🖨️", "Печать"):
+                button.setEnabled(False)
 
     def select_date(self, entry):
         from datetime import datetime
@@ -322,7 +430,7 @@ class StationaryCardPage(QWidget):
                 pass
             layout = QVBoxLayout(dlg)
             # create the page after sizing the dialog so the page picks up correct parent size
-            page = PlanPage(dlg, self.db, self.patient_id, self.records_table, self.load_histories_list, allowed_categories=['exam','drugs'])
+            page = PlanPage(dlg, self.db, self.patient_id, self.records_table, self.load_histories_list, allowed_categories=['exam','drugs'], history_id=self.history_id)
             layout.addWidget(page)
             # center dialog over main window if possible
             try:
@@ -346,7 +454,7 @@ class StationaryCardPage(QWidget):
                     except Exception:
                         anc = None
                 if anc is not None and hasattr(anc, 'nav_push'):
-                    anc.nav_push(PlanPage(anc, self.db, self.patient_id, self.records_table, self.load_histories_list, allowed_categories=['exam','drugs']))
+                    anc.nav_push(PlanPage(anc, self.db, self.patient_id, self.records_table, self.load_histories_list, allowed_categories=['exam','drugs'], history_id=self.history_id))
                     return
             except Exception:
                 pass
@@ -354,14 +462,18 @@ class StationaryCardPage(QWidget):
     def load_appointments(self, patient_id):
         # load appointments for the most recent history of patient
         try:
-            # Retrieve all appointments for the patient (across histories)
-            appts = self.db.get_appointments_for_patient(patient_id)
+            if self.history_id is None:
+                appts = self.db.get_appointments_for_patient(patient_id)
+            else:
+                appts = self.db.get_appointments_for_logical_history(patient_id, self.history_id)
             self.appointments_table.setRowCount(0)
             for a in appts:
                 # a: id, history_id, name, method, freq, date_assign, date_cancel, created_at
                 row = self.appointments_table.rowCount()
                 self.appointments_table.insertRow(row)
-                self.appointments_table.setItem(row, 0, QTableWidgetItem(a[2] or ""))
+                name_item = QTableWidgetItem(a[2] or "")
+                name_item.setData(Qt.UserRole, a[0])
+                self.appointments_table.setItem(row, 0, name_item)
                 self.appointments_table.setItem(row, 1, QTableWidgetItem(a[3] or ""))
                 self.appointments_table.setItem(row, 2, QTableWidgetItem(a[4] or ""))
                 self.appointments_table.setItem(row, 3, QTableWidgetItem(a[5] or ""))
@@ -388,7 +500,19 @@ class StationaryCardPage(QWidget):
         def _on_edit(res):
             try:
                 self.appointment_templates = res.get("templates", self.appointment_templates)
-                self.appointments_table.setItem(row, 0, QTableWidgetItem(res.get("name", "")))
+                appointment_id = self.appointments_table.item(row, 0).data(Qt.UserRole) if self.appointments_table.item(row, 0) else None
+                if appointment_id:
+                    self.db.update_appointment(
+                        appointment_id,
+                        res.get("name", ""),
+                        res.get("method", ""),
+                        res.get("freq", ""),
+                        res.get("date_assign", ""),
+                        res.get("date_cancel", ""),
+                    )
+                name_item = QTableWidgetItem(res.get("name", ""))
+                name_item.setData(Qt.UserRole, appointment_id)
+                self.appointments_table.setItem(row, 0, name_item)
                 self.appointments_table.setItem(row, 1, QTableWidgetItem(res.get("method", "")))
                 self.appointments_table.setItem(row, 2, QTableWidgetItem(res.get("freq", "")))
                 self.appointments_table.setItem(row, 3, QTableWidgetItem(res.get("date_assign", "")))
@@ -416,6 +540,9 @@ class StationaryCardPage(QWidget):
                                      QMessageBox.Yes | QMessageBox.No)
         if reply == QMessageBox.Yes:
             row = selected[0].row()
+            appointment_id = self.appointments_table.item(row, 0).data(Qt.UserRole) if self.appointments_table.item(row, 0) else None
+            if appointment_id:
+                self.db.delete_appointment(appointment_id)
             self.appointments_table.removeRow(row)
 
     def add_record(self):
@@ -427,7 +554,7 @@ class StationaryCardPage(QWidget):
 
     def open_primary_exam(self, patient_id, records_table):
         # Проверка: первичный осмотр может быть только один
-        if self.db.has_primary_exam(patient_id):
+        if self.db.has_primary_exam(patient_id, self.history_id):
             QMessageBox.warning(self, "Предупреждение", "Первичный осмотр для этого пациента уже существует. Его можно отредактировать в истории.")
             return
 
@@ -498,6 +625,8 @@ class StationaryCardPage(QWidget):
             title = "Паспортная часть"
         elif record_type == "diary":
             title = "Дневник"
+        elif record_type == "discharge_summary":
+            title = "Выписной эпикриз"
         elif record_type == "history":
             title = "История болезни"
         else:
@@ -509,6 +638,7 @@ class StationaryCardPage(QWidget):
             formatted_date_only = dt.strftime("%d.%m.%Y") + (" " + self.admission_time if self.admission_time else "")
         except:
             formatted_date = history[2] or ""
+            formatted_date_only = formatted_date
         
         # Получаем информацию о пациенте
         patient_name = f"{self.patient[1]} {self.patient[2]} {self.patient[9] if len(self.patient) > 9 else ''}".strip() if self.patient and len(self.patient) > 2 else "Неизвестно"
@@ -577,9 +707,18 @@ class StationaryCardPage(QWidget):
     def add_diagnostic(self):
         def _on_done(res):
             try:
+                diagnostic_id = self.db.add_diagnostic(
+                    self.patient_id,
+                    self.history_id,
+                    res.get("date", ""),
+                    res.get("name", ""),
+                    res.get("results", ""),
+                )
                 row = self.diagnostics_table.rowCount()
                 self.diagnostics_table.insertRow(row)
-                self.diagnostics_table.setItem(row, 0, QTableWidgetItem(res.get("date", "")))
+                date_item = QTableWidgetItem(res.get("date", ""))
+                date_item.setData(Qt.UserRole, diagnostic_id)
+                self.diagnostics_table.setItem(row, 0, date_item)
                 self.diagnostics_table.setItem(row, 1, QTableWidgetItem(res.get("name", "")))
                 self.diagnostics_table.setItem(row, 2, QTableWidgetItem(res.get("results", "")))
             except Exception:
@@ -604,7 +743,12 @@ class StationaryCardPage(QWidget):
         row = selected[0].row()
         def _on_edit(res):
             try:
-                self.diagnostics_table.setItem(row, 0, QTableWidgetItem(res.get("date", "")))
+                diagnostic_id = self.diagnostics_table.item(row, 0).data(Qt.UserRole) if self.diagnostics_table.item(row, 0) else None
+                if diagnostic_id:
+                    self.db.update_diagnostic(diagnostic_id, res.get("date", ""), res.get("name", ""), res.get("results", ""))
+                date_item = QTableWidgetItem(res.get("date", ""))
+                date_item.setData(Qt.UserRole, diagnostic_id)
+                self.diagnostics_table.setItem(row, 0, date_item)
                 self.diagnostics_table.setItem(row, 1, QTableWidgetItem(res.get("name", "")))
                 self.diagnostics_table.setItem(row, 2, QTableWidgetItem(res.get("results", "")))
             except Exception:
@@ -633,7 +777,22 @@ class StationaryCardPage(QWidget):
                                      QMessageBox.Yes | QMessageBox.No)
         if reply == QMessageBox.Yes:
             row = selected[0].row()
+            diagnostic_id = self.diagnostics_table.item(row, 0).data(Qt.UserRole) if self.diagnostics_table.item(row, 0) else None
+            if diagnostic_id:
+                self.db.delete_diagnostic(diagnostic_id)
             self.diagnostics_table.removeRow(row)
+
+    def load_diagnostics(self, patient_id):
+        diagnostics = self.db.get_diagnostics(patient_id, self.history_id)
+        self.diagnostics_table.setRowCount(0)
+        for d in diagnostics:
+            row = self.diagnostics_table.rowCount()
+            self.diagnostics_table.insertRow(row)
+            date_item = QTableWidgetItem(d[3] or "")
+            date_item.setData(Qt.UserRole, d[0])
+            self.diagnostics_table.setItem(row, 0, date_item)
+            self.diagnostics_table.setItem(row, 1, QTableWidgetItem(d[4] or ""))
+            self.diagnostics_table.setItem(row, 2, QTableWidgetItem(d[5] or ""))
 
     def delete_history(self):
         reply1 = QMessageBox.question(self, "Подтверждение", "Вы уверены, что хотите удалить всю историю болезни этого пациента?",
@@ -642,10 +801,12 @@ class StationaryCardPage(QWidget):
             reply2 = QMessageBox.question(self, "Второе подтверждение", "Это действие необратимо. Подтвердить удаление всей истории?",
                                           QMessageBox.Yes | QMessageBox.No)
             if reply2 == QMessageBox.Yes:
-                # Удалить все истории пациента
-                histories = self.db.get_histories(self.patient_id)
-                for h in histories:
-                    self.db.delete_history(h[0])
+                if self.history_id is not None:
+                    self.db.delete_entire_history_group(self.history_id)
+                else:
+                    histories = self.db.get_histories(self.patient_id)
+                    for h in histories:
+                        self.db.delete_history(h[0])
                 QMessageBox.information(self, "Успех", "История болезни удалена.")
                 # navigate back if possible
                 parent = self.parent()
@@ -709,6 +870,8 @@ class StationaryCardPage(QWidget):
                 title = "Паспортная часть"
             elif record_type == "diary":
                 title = "Дневник"
+            elif record_type == "discharge_summary":
+                title = "Выписной эпикриз"
             elif record_type == "history":
                 title = "История болезни"
             elif record_type == "other":
@@ -742,6 +905,67 @@ class StationaryCardPage(QWidget):
 
 
 # Old simple AppointmentDialog replaced by `AppointmentEditorDialog` in windows/appointment_editor.py
+
+
+class DischargeDialog(QDialog):
+    def __init__(self, parent, final_diagnosis='', outcome=''):
+        super().__init__(parent)
+        self.setWindowTitle("Выписка пациента")
+        self.setModal(True)
+        self.resize(600, 500)
+        layout = QVBoxLayout(self)
+
+        date_row = QHBoxLayout()
+        date_row.addWidget(QLabel("Дата выписки:"))
+        self.discharge_date = DateInput()
+        self.discharge_date.setText(datetime.now().strftime("%d.%m.%Y"))
+        date_row.addWidget(self.discharge_date)
+        date_row.addWidget(QLabel("Время:"))
+        self.discharge_time = TimeInput()
+        self.discharge_time.setText(datetime.now().strftime("%H:%M"))
+        date_row.addWidget(self.discharge_time)
+        layout.addLayout(date_row)
+
+        layout.addWidget(QLabel("Исход:"))
+        self.outcome_combo = QComboBox()
+        self.outcome_combo.setEditable(True)
+        self.outcome_combo.addItems(["улучшение", "без перемен", "ухудшение", "перевод", "смерть", "другое"])
+        if outcome:
+            self.outcome_combo.setCurrentText(outcome)
+        layout.addWidget(self.outcome_combo)
+
+        layout.addWidget(QLabel("Заключительный диагноз:"))
+        self.final_diagnosis = QTextEdit()
+        self.final_diagnosis.setPlainText(final_diagnosis)
+        layout.addWidget(self.final_diagnosis)
+
+        layout.addWidget(QLabel("Выписной эпикриз:"))
+        self.summary = QTextEdit()
+        layout.addWidget(self.summary)
+
+        layout.addWidget(QLabel("Рекомендации:"))
+        self.recommendations = QTextEdit()
+        layout.addWidget(self.recommendations)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        cancel = QPushButton("Отмена")
+        cancel.clicked.connect(self.reject)
+        buttons.addWidget(cancel)
+        ok = QPushButton("Выписать и перенести в архив")
+        ok.clicked.connect(self.accept)
+        buttons.addWidget(ok)
+        layout.addLayout(buttons)
+
+    def get_data(self):
+        return {
+            "discharge_date": self.discharge_date.text().strip(),
+            "discharge_time": self.discharge_time.text().strip(),
+            "outcome": self.outcome_combo.currentText().strip(),
+            "final_diagnosis": self.final_diagnosis.toPlainText().strip(),
+            "summary": self.summary.toPlainText().strip(),
+            "recommendations": self.recommendations.toPlainText().strip(),
+        }
 
 
 class DiagnosticDialog(QDialog):

@@ -79,7 +79,7 @@ def build_with_pyinstaller():
     
     # Добавьте иконку если она есть
     if Path('icon.ico').exists():
-        cmd.insert(cmd.index('--output-dir=dist'), '--icon=icon.ico')
+        cmd.insert(cmd.index('main.py'), '--icon=icon.ico')
     
     result = subprocess.run(cmd)
     

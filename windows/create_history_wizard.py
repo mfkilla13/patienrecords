@@ -145,7 +145,7 @@ class CreateHistoryWizard(QDialog):
     def _patients_from_db(self) -> list[WizardPatient]:
         patients = []
         for p in self.db.get_patients():
-            # patients: (id, surname, name, patronymic, dob, created_at, city, street, house, apartment)
+            # patients: (id, surname, name, dob, created_at, city, street, house, apartment, patronymic)
             pid = int(p[0])
             surname = p[1] or ""
             name = p[2] or ""
@@ -154,10 +154,10 @@ class CreateHistoryWizard(QDialog):
             # compose address from components if present
             address = ""
             try:
-                city = p[6] if len(p) > 6 and p[6] else ''
-                street = p[7] if len(p) > 7 and p[7] else ''
-                house = p[8] if len(p) > 8 and p[8] else ''
-                apt = p[9] if len(p) > 9 and p[9] else ''
+                city = p[5] if len(p) > 5 and p[5] else ''
+                street = p[6] if len(p) > 6 and p[6] else ''
+                house = p[7] if len(p) > 7 and p[7] else ''
+                apt = p[8] if len(p) > 8 and p[8] else ''
                 parts = []
                 if city:
                     parts.append(city)
@@ -611,7 +611,14 @@ class CreateHistoryWizard(QDialog):
             )
             diag_admission = self.admission_diag_edit.text().strip()
             diag_clinical = self.clinical_diag_edit.text().strip()
-            history_id_val = int(self.card_number_edit.text().strip())
+            card_number = self.card_number_edit.text().strip()
+            history_id_val = self.db.create_medical_case(
+                self.patient_id,
+                card_number,
+                self.admission_date_edit.text().strip(),
+                self.admission_time_edit.text().strip(),
+                diag_clinical or diag_admission,
+            )
             
             self.db.add_history(self.patient_id, "passport", passport_info, 
                                 diagnosis=diag_admission, 
@@ -624,6 +631,7 @@ class CreateHistoryWizard(QDialog):
 
         # Сохраняем ссылки до закрытия/удаления объекта
         pid = self.patient_id
+        case_id = history_id_val
         cb = self.done_callback
 
         # 1. Закрываем текущее окно
@@ -647,7 +655,7 @@ class CreateHistoryWizard(QDialog):
         # 2. Вызываем колбэк (обновление списка и открытие карты)
         # Используем QTimer.singleShot для вызова после завершения цикла обработки событий закрытия
         if cb and callable(cb):
-            QTimer.singleShot(0, lambda: cb(pid))
+            QTimer.singleShot(0, lambda: cb(pid, case_id))
 
     # -----------------
     # Shared
@@ -909,4 +917,3 @@ class _PatientEditDialog(QDialog):
 
     def _close_window(self):
         self.reject()
-

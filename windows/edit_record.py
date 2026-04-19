@@ -134,8 +134,20 @@ class EditRecordWindow(QDialog):
                     break
             
             logical_history_id = current_h[11] if current_h else None
+            diagnosis = current_h[5] if current_h else ""
+            treatment = current_h[6] if current_h else ""
+            notes = current_h[7] if current_h else ""
+            diag_admission = current_h[8] if current_h else ""
+            diag_clinical = current_h[9] if current_h else ""
+            diag_comorbid = current_h[10] if current_h else ""
             
-            self.db.update_history(history_id_row, record_type, record, "", "", "", logical_history_id=logical_history_id)
+            self.db.update_history(
+                history_id_row, record_type, record, diagnosis, treatment, notes,
+                diag_admission=diag_admission,
+                diag_clinical=diag_clinical,
+                diag_comorbid=diag_comorbid,
+                logical_history_id=logical_history_id,
+            )
             QMessageBox.information(self, "Успех", "Запись обновлена.")
             self.load_records_list(self.records_table, self.patient_id)
             parent = self.parent()

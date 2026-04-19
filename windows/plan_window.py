@@ -274,10 +274,10 @@ class PlanPage(QWidget):
         # Create or update a history entry for the plan and persist individual appointments
         history_id = None
         try:
-            # look for an existing 'plan' history for this patient
+            # look for an existing 'plan' history for this concrete medical history
             histories = self.db.get_histories(self.patient_id)
             for h in histories:
-                if h[3] == "plan":  # record_type
+                if h[3] == "plan" and h[11] == self.history_id:
                     history_id = h[0]
                     break
         except Exception:
@@ -367,4 +367,3 @@ class PlanPage(QWidget):
             self.hide()
         except Exception:
             pass
-

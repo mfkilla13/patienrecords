@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QDateEdit
 )
 from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QAction, QFont, QTextDocument
+from PySide6.QtGui import QAction, QFont, QTextDocument, QColor
 from database import Database
 from windows.stationary_card import StationaryCardPage
 from windows.add_record import AddRecordWindow
@@ -67,8 +67,9 @@ class MedicalApp(QMainWindow):
 
         # Search bar
         search_layout = QHBoxLayout()
-        search_layout.addWidget(QLabel("Поиск пациентов:"))
+        search_layout.addWidget(QLabel("Поиск по ФИО, номеру карты, диагнозу:"))
         self.search_entry = QLineEdit()
+        self.search_entry.setPlaceholderText("ФИО, номер карты или диагноз")
         self.search_entry.textChanged.connect(self.filter_patients)
         search_layout.addWidget(self.search_entry)
 
@@ -109,24 +110,93 @@ class MedicalApp(QMainWindow):
         search_layout.addLayout(button_layout)
         layout.addLayout(search_layout)
 
-        # Patients list
-        self.tree = QTableWidget()
-        self.tree.setColumnCount(6)
-        self.tree.setHorizontalHeaderLabels(["Дата", "ФИО", "Дата рожд.", "Диагноз", "Исход", "Дней"])
-        self.tree.setColumnWidth(0, 90)  # Дата
-        self.tree.setColumnWidth(1, 200)  # ФИО
-        self.tree.setColumnWidth(2, 100)  # Дата рожд.
-        self.tree.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)  # Диагноз
-        self.tree.setColumnWidth(4, 120)  # Исход
-        self.tree.setColumnWidth(5, 60)  # Дней
-        self.tree.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.tree.verticalHeader().setDefaultSectionSize(20)
-        self.tree.setStyleSheet("QTableWidget::item { padding: 0px; margin: 0px; }")
-        self.tree.cellDoubleClicked.connect(self.view_histories)
-        self.tree.itemSelectionChanged.connect(self.on_patient_select)
-        self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.tree.customContextMenuRequested.connect(self.show_context_menu)
-        layout.addWidget(self.tree)
+        archive_filters = QHBoxLayout()
+        archive_filters.addWidget(QLabel("Фильтр:"))
+        archive_filters.addWidget(QLabel("Год выписки:"))
+        self.archive_year_combo = QComboBox()
+        self.archive_year_combo.addItem("Все")
+        self.archive_year_combo.currentTextChanged.connect(self.filter_patients)
+        archive_filters.addWidget(self.archive_year_combo)
+        archive_filters.addWidget(QLabel("Месяц:"))
+        self.archive_month_combo = QComboBox()
+        self.archive_month_combo.addItems(["Все", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"])
+        self.archive_month_combo.currentTextChanged.connect(self.filter_patients)
+        archive_filters.addWidget(self.archive_month_combo)
+        archive_filters.addWidget(QLabel("Исход:"))
+        self.archive_outcome_combo = QComboBox()
+        self.archive_outcome_combo.addItem("Все")
+        self.archive_outcome_combo.currentTextChanged.connect(self.filter_patients)
+        archive_filters.addWidget(self.archive_outcome_combo)
+        self.archive_reset_button = QPushButton("Сбросить")
+        self.archive_reset_button.clicked.connect(self._reset_archive_filters)
+        archive_filters.addWidget(self.archive_reset_button)
+        archive_filters.addStretch(1)
+        layout.addLayout(archive_filters)
+
+        self.case_tabs = QTabWidget()
+        self.tree = self._create_case_table(archive=False)
+        self.archive_tree = self._create_case_table(archive=True)
+        self.case_tabs.addTab(self.tree, "В отделении")
+        self.case_tabs.addTab(self.archive_tree, "Архив")
+        self.case_tabs.setStyleSheet("""
+            QTabBar::tab {
+                color: black;
+                font-weight: 400;
+                padding: 6px 14px;
+                border: 1px solid #999999;
+                border-bottom: none;
+                border-top-left-radius: 3px;
+                border-top-right-radius: 3px;
+                margin-right: 2px;
+            }
+            QTabBar::tab:first {
+                background-color: #2ecc71;
+            }
+            QTabBar::tab:last {
+                background-color: #f1c40f;
+            }
+            QTabBar::tab:selected {
+                font-weight: 700;
+                border: 2px solid #555555;
+                border-bottom: none;
+            }
+            QTabWidget::pane {
+                border: 1px solid #999999;
+            }
+        """)
+        self.case_tabs.currentChanged.connect(lambda _idx: self.on_patient_select())
+        layout.addWidget(self.case_tabs)
+
+    def _create_case_table(self, archive=False):
+        table = QTableWidget()
+        if archive:
+            table.setColumnCount(8)
+            table.setHorizontalHeaderLabels(["Дата пост.", "Дата вып.", "№ карты", "ФИО", "Дата рожд.", "Диагноз", "Исход", "Дней"])
+        else:
+            table.setColumnCount(6)
+            table.setHorizontalHeaderLabels(["Дата", "№ карты", "ФИО", "Дата рожд.", "Диагноз", "Дней"])
+        table.setColumnWidth(0, 90)
+        table.setColumnWidth(1, 90)
+        table.setColumnWidth(2, 120 if archive else 200)
+        if archive:
+            table.setColumnWidth(3, 200)
+            table.setColumnWidth(4, 100)
+            table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)
+            table.setColumnWidth(6, 120)
+            table.setColumnWidth(7, 60)
+        else:
+            table.setColumnWidth(3, 100)
+            table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+            table.setColumnWidth(5, 60)
+        table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        table.verticalHeader().setDefaultSectionSize(20)
+        table.setStyleSheet("QTableWidget::item { padding: 0px; margin: 0px; }")
+        table.setSortingEnabled(True)
+        table.cellDoubleClicked.connect(self.view_histories)
+        table.itemSelectionChanged.connect(self.on_patient_select)
+        table.setContextMenuPolicy(Qt.CustomContextMenu)
+        table.customContextMenuRequested.connect(self.show_context_menu)
+        return table
 
     # Navigation API
     def _nav_back(self):
@@ -211,9 +281,11 @@ class MedicalApp(QMainWindow):
     def _get_patient_summary(self, patient_data):
         p = patient_data
         pid = p[0]
-        histories = self.db.get_histories(pid)
-        if not histories:
+        all_histories = self.db.get_histories(pid)
+        if not all_histories:
             return None
+        current_history_id = all_histories[0][11]
+        histories = [h for h in all_histories if h[11] == current_history_id] if current_history_id is not None else all_histories
 
         # Logic for diagnoses
         diag_clinical = ""
@@ -296,83 +368,216 @@ class MedicalApp(QMainWindow):
             'outcome': outcome,
             'days': days_str,
             'pid': pid,
-            'hid': h_latest[11]
+            'hid': current_history_id
         }
 
+    def _format_date(self, value):
+        if not value:
+            return ""
+        for fmt in ("%Y-%m-%d", "%d.%m.%Y"):
+            try:
+                return datetime.strptime(value[:10], fmt).strftime("%d.%m.%Y")
+            except Exception:
+                pass
+        try:
+            return datetime.fromisoformat(value).strftime("%d.%m.%Y")
+        except Exception:
+            return value[:10]
+
+    def _get_case_summary(self, case):
+        case_id = case[0]
+        patient_id = case[1]
+        card_number = case[2] or str(case_id)
+        admission_date = case[3] or ""
+        discharge_date = case[5] or ""
+        outcome = case[7] or ""
+        status = case[8] or "active"
+        final_diagnosis = case[9] or ""
+        surname = case[14] or ""
+        name = case[15] or ""
+        dob = self._format_date(case[16] or "")
+        patronymic = case[17] or ""
+
+        histories = self.db.get_histories(patient_id)
+        histories = [h for h in histories if h[11] == case_id]
+        diag_clinical = final_diagnosis
+        diag_admission = ""
+        if not admission_date:
+            for h in histories:
+                exam_text = h[4] or ""
+                if "Дата поступления:" in exam_text:
+                    for line in exam_text.split("\n"):
+                        if line.startswith("Дата поступления:"):
+                            admission_date = line.split(":", 1)[1].strip()[:10]
+                            break
+                if admission_date:
+                    break
+        for h in histories:
+            if not diag_clinical and h[9]:
+                diag_clinical = h[9]
+            if not diag_admission and h[8]:
+                diag_admission = h[8]
+            if not outcome:
+                exam_text = h[4] or ""
+                if "Исход:" in exam_text:
+                    for line in exam_text.split("\n"):
+                        if line.startswith("Исход:"):
+                            outcome = line.split(":", 1)[1].strip()
+                            break
+            if diag_clinical and diag_admission and outcome:
+                break
+
+        days_str = ""
+        try:
+            start = datetime.strptime(admission_date[:10], "%d.%m.%Y")
+            if discharge_date:
+                end = datetime.strptime(discharge_date[:10], "%d.%m.%Y")
+            else:
+                end = datetime.now()
+            days_str = str((end - start).days + 1)
+        except Exception:
+            pass
+
+        return {
+            "case_id": case_id,
+            "patient_id": patient_id,
+            "card_number": card_number,
+            "admission_date": self._format_date(admission_date),
+            "discharge_date": self._format_date(discharge_date),
+            "fio": f"{surname} {name} {patronymic}".strip(),
+            "dob": dob,
+            "diagnosis": diag_clinical or diag_admission,
+            "outcome": outcome,
+            "days": days_str,
+            "status": status,
+        }
+
+    def _current_table(self):
+        if hasattr(self, 'case_tabs') and self.case_tabs.currentIndex() == 1:
+            return self.archive_tree
+        return self.tree
+
+    def _case_item(self, table, row):
+        return table.item(row, 0)
+
+    def _reset_archive_filters(self):
+        self.archive_year_combo.setCurrentText("Все")
+        self.archive_month_combo.setCurrentText("Все")
+        self.archive_outcome_combo.setCurrentText("Все")
+        self.load_patients()
+
+    def _refresh_archive_filters(self, summaries):
+        current_year = self.archive_year_combo.currentText()
+        current_outcome = self.archive_outcome_combo.currentText()
+        years = sorted({s["discharge_date"][-4:] for s in summaries if len(s["discharge_date"]) >= 10}, reverse=True)
+        outcomes = sorted({s["outcome"] for s in summaries if s["outcome"]})
+
+        self.archive_year_combo.blockSignals(True)
+        self.archive_outcome_combo.blockSignals(True)
+        self.archive_year_combo.clear()
+        self.archive_year_combo.addItem("Все")
+        self.archive_year_combo.addItems(years)
+        self.archive_year_combo.setCurrentText(current_year if current_year in ["Все"] + years else "Все")
+        self.archive_outcome_combo.clear()
+        self.archive_outcome_combo.addItem("Все")
+        self.archive_outcome_combo.addItems(outcomes)
+        self.archive_outcome_combo.setCurrentText(current_outcome if current_outcome in ["Все"] + outcomes else "Все")
+        self.archive_year_combo.blockSignals(False)
+        self.archive_outcome_combo.blockSignals(False)
+
+    def _passes_archive_filters(self, summary):
+        if summary["status"] != "archived":
+            return True
+        year = self.archive_year_combo.currentText()
+        month = self.archive_month_combo.currentText()
+        outcome = self.archive_outcome_combo.currentText()
+        discharge_date = summary["discharge_date"]
+        if year != "Все" and not discharge_date.endswith(year):
+            return False
+        date_parts = discharge_date.split(".")
+        discharge_month = date_parts[1] if len(date_parts) >= 2 else ""
+        if month != "Все" and discharge_month != month:
+            return False
+        if outcome != "Все" and summary["outcome"] != outcome:
+            return False
+        return True
+
+    def _outcome_color(self, outcome):
+        text = (outcome or "").lower()
+        if "улучш" in text:
+            return QColor(220, 245, 225)
+        if "перевод" in text:
+            return QColor(220, 235, 250)
+        if "ухудш" in text or "смер" in text:
+            return QColor(245, 220, 220)
+        if text:
+            return QColor(245, 240, 210)
+        return None
+
+    def _set_case_item(self, table, row, col, text, summary, color=None):
+        item = QTableWidgetItem(text)
+        item.setData(Qt.UserRole, summary["patient_id"])
+        item.setData(Qt.UserRole + 1, summary["case_id"])
+        item.setData(Qt.UserRole + 2, summary["card_number"])
+        item.setData(Qt.UserRole + 3, summary["status"])
+        if color is not None:
+            item.setBackground(color)
+        table.setItem(row, col, item)
+
+    def _populate_case_table(self, table, cases):
+        table.setSortingEnabled(False)
+        table.setRowCount(0)
+        query = self.search_entry.text().strip().lower() if hasattr(self, 'search_entry') else ""
+        is_archive = table is self.archive_tree
+        for case in cases:
+            summary = self._get_case_summary(case)
+            if query and query not in summary["fio"].lower() and query not in summary["diagnosis"].lower() and query not in summary["card_number"].lower():
+                continue
+            if is_archive and not self._passes_archive_filters(summary):
+                continue
+            row = table.rowCount()
+            table.insertRow(row)
+            row_color = self._outcome_color(summary["outcome"]) if is_archive else None
+            if is_archive:
+                values = [
+                    summary["admission_date"],
+                    summary["discharge_date"],
+                    summary["card_number"],
+                    summary["fio"],
+                    summary["dob"],
+                    summary["diagnosis"],
+                    summary["outcome"],
+                    summary["days"],
+                ]
+            else:
+                values = [
+                    summary["admission_date"],
+                    summary["card_number"],
+                    summary["fio"],
+                    summary["dob"],
+                    summary["diagnosis"],
+                    summary["days"],
+                ]
+            for col, value in enumerate(values):
+                self._set_case_item(table, row, col, value, summary, row_color)
+        table.setSortingEnabled(True)
+
     def load_patients(self):
-        rows_data = []
-        for p in self.db.get_patients():
-            summary = self._get_patient_summary(p)
-            if summary:
-                rows_data.append(summary)
-
-        # sort by visit_date raw desc
-        rows_data.sort(key=lambda x: x['visit_date_raw'] or '', reverse=True)
-
-        self.tree.setRowCount(0)
-        for s in rows_data:
-            row = self.tree.rowCount()
-            self.tree.insertRow(row)
-            
-            self.tree.setItem(row, 0, QTableWidgetItem(s['admission_date']))
-            
-            fio = f"{s['surname']} {s['name']} {s['patronymic']}".strip()
-            item_fio = QTableWidgetItem(fio)
-            item_fio.setData(Qt.UserRole, s['pid'])
-            item_fio.setData(Qt.UserRole + 1, s['hid'])
-            self.tree.setItem(row, 1, item_fio)
-            
-            self.tree.setItem(row, 2, QTableWidgetItem(s['dob']))
-            
-            # Show clinical diagnosis if available, otherwise fallback to admission diagnosis
-            diag_to_show = s['diag_clinical'] if s['diag_clinical'] else s['diag_admission']
-            self.tree.setItem(row, 3, QTableWidgetItem(diag_to_show))
-            
-            self.tree.setItem(row, 4, QTableWidgetItem(s['outcome']))
-            self.tree.setItem(row, 5, QTableWidgetItem(s['days']))
+        active_cases = self.db.get_cases("active")
+        archived_cases = self.db.get_cases("archived")
+        archived_summaries = [self._get_case_summary(case) for case in archived_cases]
+        self._refresh_archive_filters(archived_summaries)
+        self._populate_case_table(self.tree, active_cases)
+        self._populate_case_table(self.archive_tree, archived_cases)
 
     def filter_patients(self):
-        query = self.search_entry.text().lower()
-        rows_data = []
-        for p in self.db.get_patients():
-            if query:
-                fio = f"{p[1] or ''} {p[2] or ''} {p[9] if len(p) > 9 else ''}".strip().lower()
-                if query not in fio:
-                    continue
-            summary = self._get_patient_summary(p)
-            if summary:
-                rows_data.append(summary)
-
-        # sort by visit_date raw desc
-        rows_data.sort(key=lambda x: x['visit_date_raw'] or '', reverse=True)
-
-        self.tree.setRowCount(0)
-        for s in rows_data:
-            row = self.tree.rowCount()
-            self.tree.insertRow(row)
-            
-            self.tree.setItem(row, 0, QTableWidgetItem(s['admission_date']))
-            
-            fio = f"{s['surname']} {s['name']} {s['patronymic']}".strip()
-            item_fio = QTableWidgetItem(fio)
-            item_fio.setData(Qt.UserRole, s['pid'])
-            item_fio.setData(Qt.UserRole + 1, s['hid'])
-            self.tree.setItem(row, 1, item_fio)
-            
-            self.tree.setItem(row, 2, QTableWidgetItem(s['dob']))
-            
-            # Show clinical diagnosis if available, otherwise fallback to admission diagnosis
-            diag_to_show = s['diag_clinical'] if s['diag_clinical'] else s['diag_admission']
-            self.tree.setItem(row, 3, QTableWidgetItem(diag_to_show))
-            
-            self.tree.setItem(row, 4, QTableWidgetItem(s['outcome']))
-            self.tree.setItem(row, 5, QTableWidgetItem(s['days']))
+        self.load_patients()
 
     def new_patient(self):
         self.open_create_history_wizard()
 
     def open_create_history_wizard(self):
-        def _on_wizard_done(patient_id):
+        def _on_wizard_done(patient_id, case_id=None):
             try:
                 if patient_id is not None:
                     # Refresh the list
@@ -381,25 +586,9 @@ class MedicalApp(QMainWindow):
                     # Also automatically open the stationary card for this patient
                     patient = self.db.get_patient_by_id(patient_id)
                     if patient:
-                        # Find the card number we just created
-                        histories = self.db.get_histories(patient_id)
-                        card_number = str(patient_id)
-                        if histories:
-                            for h in histories:
-                                if h[3] == "passport":
-                                    if h[11]: # logical history_id
-                                        card_number = str(h[11])
-                                        break
-                                    # Fallback to parsing text
-                                    examination = h[4]
-                                    for line in examination.split('\n'):
-                                        if line.startswith("Номер карты:"):
-                                            cnum = line.split(":", 1)[1].strip()
-                                            if cnum:
-                                                card_number = cnum
-                                            break
-                                    break
-                        page = StationaryCardPage(self, self.db, patient_id, patient, card_number)
+                        case = self.db.get_case_by_id(case_id) if case_id is not None else None
+                        card_number = case[2] if case else str(case_id or patient_id)
+                        page = StationaryCardPage(self, self.db, patient_id, patient, card_number, case_id=case_id)
                         self.nav_push(page)
             except Exception:
                 pass
@@ -425,7 +614,8 @@ class MedicalApp(QMainWindow):
                 pass
 
     def delete_patient(self):
-        selected = self.tree.selectedItems()
+        table = self._current_table()
+        selected = table.selectedItems()
         if not selected:
             QMessageBox.warning(self, "Ошибка", "Выберите пациента для удаления.")
             return
@@ -433,20 +623,25 @@ class MedicalApp(QMainWindow):
                                      QMessageBox.Yes | QMessageBox.No)
         if reply == QMessageBox.Yes:
             row = selected[0].row()
-            patient_id = self.tree.item(row, 1).data(Qt.UserRole)
+            patient_id = self._case_item(table, row).data(Qt.UserRole)
             self.db.delete_patient(patient_id)
             self.load_patients()
 
     def view_histories(self, row, column):
-        patient_id = self.tree.item(row, 1).data(Qt.UserRole)
-        history_id = self.tree.item(row, 1).data(Qt.UserRole + 1)
+        table = self.sender() if isinstance(self.sender(), QTableWidget) else self._current_table()
+        case_item = self._case_item(table, row)
+        patient_id = case_item.data(Qt.UserRole)
+        history_id = case_item.data(Qt.UserRole + 1)
+        card_number = case_item.data(Qt.UserRole + 2)
+        status = case_item.data(Qt.UserRole + 3)
         patient = self.db.get_patient_by_id(patient_id)
         if not patient:
             return
-        self.open_history_window(patient_id, patient, history_id)
+        page = StationaryCardPage(self, self.db, patient_id, patient, card_number or str(history_id), case_id=history_id, read_only=(status == "archived"))
+        self.nav_push(page)
 
     def open_history_window(self, patient_id, patient, history_id=None):
-        dlg = HistoryDialog(patient_id, patient, self.db, self)
+        dlg = HistoryDialog(patient_id, patient, self.db, self, history_id)
         try:
             self.nav_push(dlg)
             # if a particular history id is provided, select it after showing
@@ -454,9 +649,9 @@ class MedicalApp(QMainWindow):
                 try:
                     # load list and find index
                     dlg.load_histories_list()
-                    histories = self.db.get_histories(patient_id)
+                    histories = getattr(dlg, '_visible_histories', self.db.get_histories(patient_id))
                     for idx, h in enumerate(histories):
-                        if h[0] == history_id:
+                        if h[11] == history_id:
                             dlg.histories_list.setCurrentRow(idx)
                             break
                 except Exception:
@@ -467,9 +662,9 @@ class MedicalApp(QMainWindow):
                 if history_id is not None:
                     try:
                         dlg.load_histories_list()
-                        histories = self.db.get_histories(patient_id)
+                        histories = getattr(dlg, '_visible_histories', self.db.get_histories(patient_id))
                         for idx, h in enumerate(histories):
-                            if h[0] == history_id:
+                            if h[11] == history_id:
                                 dlg.histories_list.setCurrentRow(idx)
                                 break
                     except Exception:
@@ -478,26 +673,31 @@ class MedicalApp(QMainWindow):
                 pass
 
     def show_context_menu(self, pos):
+        table = self.sender() if isinstance(self.sender(), QTableWidget) else self._current_table()
         menu = QMenu()
         fill_action = menu.addAction("Заполнить")
         fill_action.triggered.connect(self.fill_patient)
-        menu.exec(self.tree.mapToGlobal(pos))
+        menu.exec(table.mapToGlobal(pos))
 
     def on_patient_select(self):
-        selected = bool(self.tree.selectedItems())
+        selected = bool(self._current_table().selectedItems())
         self.edit_button.setEnabled(selected)
         self.delete_history_button.setEnabled(selected)
 
     def fill_patient(self):
-        selected = self.tree.selectedItems()
+        table = self._current_table()
+        selected = table.selectedItems()
         if selected:
             row = selected[0].row()
-            patient_id = self.tree.item(row, 1).data(Qt.UserRole)
-            logical_hid = self.tree.item(row, 1).data(Qt.UserRole + 1)
+            case_item = self._case_item(table, row)
+            patient_id = case_item.data(Qt.UserRole)
+            logical_hid = case_item.data(Qt.UserRole + 1)
+            card_number = case_item.data(Qt.UserRole + 2)
+            status = case_item.data(Qt.UserRole + 3)
             patient = self.db.get_patient_by_id(patient_id)
             if patient:
-                card_number = str(logical_hid) if logical_hid else str(patient_id)
-                page = StationaryCardPage(self, self.db, patient_id, patient, card_number)
+                card_number = card_number or (str(logical_hid) if logical_hid else str(patient_id))
+                page = StationaryCardPage(self, self.db, patient_id, patient, card_number, case_id=logical_hid, read_only=(status == "archived"))
                 try:
                     # push into main navigation if available
                     self.nav_push(page)
@@ -506,13 +706,14 @@ class MedicalApp(QMainWindow):
                     page.show()
 
     def delete_history(self):
-        selected = self.tree.selectedItems()
+        table = self._current_table()
+        selected = table.selectedItems()
         if not selected:
             QMessageBox.warning(self, "Ошибка", "Выберите запись для удаления.")
             return
         row = selected[0].row()
         # history_id is the logical history number stored in UserRole+1
-        logical_history_id = self.tree.item(row, 1).data(Qt.UserRole + 1)
+        logical_history_id = self._case_item(table, row).data(Qt.UserRole + 1)
         if not logical_history_id:
             QMessageBox.warning(self, "Ошибка", "Не удалось определить выбранную историю.")
             return
@@ -653,11 +854,12 @@ class NewPatientDialog(QDialog):
             QMessageBox.warning(self, "Ошибка", "Фамилия обязательна.")
 
 class HistoryDialog(QDialog):
-    def __init__(self, patient_id, patient, db, parent):
+    def __init__(self, patient_id, patient, db, parent, logical_history_id=None):
         super().__init__(parent)
         self.patient_id = patient_id
         self.patient = patient
         self.db = db
+        self.logical_history_id = logical_history_id
         self.setWindowTitle(f"Histories for {patient[1]} {patient[2]} {patient[9] if len(patient) > 9 else ''}".strip())
         self.setModal(True)
         self.resize(800, 600)
@@ -695,7 +897,7 @@ class HistoryDialog(QDialog):
         diag = self.diag_entry.text()
         treat = self.treat_entry.text()
         notes = self.notes_text.toPlainText()
-        self.db.add_history(self.patient_id, "history", exam, diag, treat, notes)
+        self.db.add_history(self.patient_id, "history", exam, diag, treat, notes, history_id=self.logical_history_id)
         QMessageBox.information(self, "Успех", "История сохранена.")
         # If this dialog was shown as a page in the main navigation, go back to main view
         # find nearest ancestor that implements _nav_back()
@@ -716,14 +918,17 @@ class HistoryDialog(QDialog):
     def load_histories_list(self):
         self.histories_list.clear()
         histories = self.db.get_histories(self.patient_id)
+        if self.logical_history_id is not None:
+            histories = [h for h in histories if h[11] == self.logical_history_id]
+        self._visible_histories = histories
         for h in histories:
             # Convert possible HTML to plain text and create a single-line preview
             try:
                 doc = QTextDocument()
-                doc.setHtml(h[3])
+                doc.setHtml(h[4] or "")
                 plain = doc.toPlainText()
             except Exception:
-                plain = h[3] or ""
+                plain = h[4] or ""
             preview = ' '.join(plain.split())[:120]
             if len(plain) > 120:
                 preview = preview + '...'
@@ -733,19 +938,19 @@ class HistoryDialog(QDialog):
         selected = self.histories_list.selectedItems()
         if selected:
             index = self.histories_list.row(selected[0])
-            histories = self.db.get_histories(self.patient_id)
+            histories = getattr(self, '_visible_histories', self.db.get_histories(self.patient_id))
             h = histories[index]
             # If stored as HTML, convert to plain text to preserve newlines
             try:
                 doc = QTextDocument()
-                doc.setHtml(h[3])
+                doc.setHtml(h[4] or "")
                 plain = doc.toPlainText()
             except Exception:
-                plain = h[3] or ""
+                plain = h[4] or ""
             self.exam_text.setPlainText(plain)
-            self.diag_entry.setText(h[4])
-            self.treat_entry.setText(h[5])
-            self.notes_text.setPlainText(h[6])
+            self.diag_entry.setText(h[5] or "")
+            self.treat_entry.setText(h[6] or "")
+            self.notes_text.setPlainText(h[7] or "")
 
 class EditPatientDialog(QDialog):
     def __init__(self, patient_id, patient, db, parent):
@@ -849,7 +1054,7 @@ class EditPatientDialog(QDialog):
         self.histories_list.clear()
         histories = self.db.get_histories(self.patient_id)
         for h in histories:
-            self.histories_list.addItem(f"{h[3][:50]}...")
+            self.histories_list.addItem(f"{(h[4] or '')[:50]}...")
 
     def load_history(self):
         selected = self.histories_list.selectedItems()
@@ -859,11 +1064,11 @@ class EditPatientDialog(QDialog):
             h = histories[index]
             try:
                 doc = QTextDocument()
-                doc.setHtml(h[3])
+                doc.setHtml(h[4] or "")
                 plain = doc.toPlainText()
             except Exception:
-                plain = h[3] or ""
+                plain = h[4] or ""
             self.exam_text.setPlainText(plain)
-            self.diag_entry.setText(h[4])
-            self.treat_entry.setText(h[5])
-            self.notes_text.setPlainText(h[6])
+            self.diag_entry.setText(h[5] or "")
+            self.treat_entry.setText(h[6] or "")
+            self.notes_text.setPlainText(h[7] or "")
