@@ -1,5 +1,7 @@
 import html
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QTabWidget, QWidget as QtWidget, QListWidget, QMessageBox, QInputDialog, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QDialog, QComboBox
+import json
+import uuid
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QTabWidget, QWidget as QtWidget, QListWidget, QListWidgetItem, QMessageBox, QInputDialog, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QDialog, QComboBox
 from PySide6.QtCore import Qt, QMarginsF, QDate
 from PySide6.QtGui import QTextDocument, QPageLayout, QPageSize, QTextCursor, QTextCharFormat, QFont, QTextTableFormat, QTextBlockFormat
 from PySide6.QtPrintSupport import QPrintPreviewDialog, QPrinter
@@ -9,6 +11,7 @@ from .edit_record import EditRecordWindow
 from .primary_exam import PrimaryExamWindow
 from widgets.date_input import DateInput
 from widgets.time_input import TimeInput
+from .diary import render_diary_html
 
 def _parse_ru_date(value):
     value = (value or "").strip()
@@ -42,6 +45,38 @@ def _format_ru_full_date(value):
         "июля", "августа", "сентября", "октября", "ноября", "декабря",
     ]
     return f"«{dt.day:02d}» {months[dt.month - 1]} {dt.year} г."
+
+
+def _format_diary_date(value):
+    try:
+        return datetime.fromisoformat(value or "").strftime("%d.%m.%Y")
+    except Exception:
+        return (value or "")[:10]
+
+
+def _diary_content_from_record(record):
+    try:
+        diary_data = json.loads(record[7] or "")
+        if isinstance(diary_data, dict):
+            return render_diary_html(diary_data), diary_data
+    except Exception:
+        pass
+    return record[4] or "", None
+
+
+def _make_invisible_print_html(value):
+    html_value = value or ""
+    replacements = (
+        ("black", "#ffffff"),
+        ("#000000", "#ffffff"),
+        ("#000", "#ffffff"),
+        ("#111", "#ffffff"),
+        ("rgb(0,0,0)", "#ffffff"),
+        ("rgb(0, 0, 0)", "#ffffff"),
+    )
+    for old, new in replacements:
+        html_value = html_value.replace(old, new)
+    return html_value
 
 class StationaryCardPage(QWidget):
     def __init__(self, parent, db, patient_id, patient, card_number, case_id=None, read_only=False):
@@ -242,6 +277,10 @@ class StationaryCardPage(QWidget):
         print_button = QPushButton("🖨️")
         print_button.clicked.connect(self.print_record)
         button_layout.addWidget(print_button)
+
+        diary_print_button = QPushButton("Печать дневников")
+        diary_print_button.clicked.connect(self.print_diaries)
+        button_layout.addWidget(diary_print_button)
 
         records_layout.addLayout(button_layout)
 
@@ -665,6 +704,13 @@ class StationaryCardPage(QWidget):
         if record_type == "discharge_summary":
             self._print_discharge_form(history)
             return
+        if record_type == "diary":
+            try:
+                diary_data = json.loads(history[7] or "")
+                if isinstance(diary_data, dict):
+                    html_content = render_diary_html(diary_data)
+            except Exception:
+                pass
         title = ""
         if record_type == "primary_exam":
             title = "Первичный осмотр"
@@ -673,7 +719,7 @@ class StationaryCardPage(QWidget):
         elif record_type == "passport":
             title = "Паспортная часть"
         elif record_type == "diary":
-            title = "Дневник"
+            title = ""
         elif record_type == "discharge_summary":
             title = "Выписной эпикриз"
         elif record_type == "history":
@@ -684,7 +730,10 @@ class StationaryCardPage(QWidget):
         try:
             dt = datetime.fromisoformat(history[2])
             formatted_date = dt.strftime("%d.%m.%Y %H:%M")
-            formatted_date_only = dt.strftime("%d.%m.%Y") + (" " + self.admission_time if self.admission_time else "")
+            if record_type == "diary":
+                formatted_date_only = dt.strftime("%d.%m.%Y")
+            else:
+                formatted_date_only = dt.strftime("%d.%m.%Y") + (" " + self.admission_time if self.admission_time else "")
         except:
             formatted_date = history[2] or ""
             formatted_date_only = formatted_date
@@ -752,6 +801,14 @@ class StationaryCardPage(QWidget):
         
         preview.paintRequested.connect(handle_paint)
         preview.exec()
+
+    def print_diaries(self):
+        if self.history_id is None:
+            QMessageBox.warning(self, "Ошибка", "Не удалось определить текущую историю болезни.")
+            return
+        dialog = DiaryPrintDialog(self, self.db, self.patient_id, self.history_id)
+        dialog.exec()
+        self.load_histories_list(self.records_table, self.patient_id)
 
     def _patient_address(self):
         if not self.patient:
@@ -1108,6 +1165,221 @@ class StationaryCardPage(QWidget):
 
 
 # Old simple AppointmentDialog replaced by `AppointmentEditorDialog` in windows/appointment_editor.py
+
+
+class DiaryPrintDialog(QDialog):
+    def __init__(self, parent, db, patient_id, case_id):
+        super().__init__(parent)
+        self.db = db
+        self.patient_id = patient_id
+        self.case_id = case_id
+        self.setWindowTitle("Печать дневников")
+        self.resize(560, 520)
+        self.create_widgets()
+        self.refresh_records()
+
+    def create_widgets(self):
+        layout = QVBoxLayout(self)
+
+        mode_row = QHBoxLayout()
+        mode_row.addWidget(QLabel("Режим:"))
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItem("Печать новых", "new")
+        self.mode_combo.addItem("Перепечатать выбранные", "reprint")
+        self.mode_combo.addItem("Печать всех", "all")
+        self.mode_combo.currentIndexChanged.connect(self.refresh_records)
+        mode_row.addWidget(self.mode_combo, 1)
+        layout.addLayout(mode_row)
+
+        self.state_label = QLabel("")
+        self.state_label.setWordWrap(True)
+        layout.addWidget(self.state_label)
+
+        self.hint_label = QLabel("Галочками можно выбрать, какие дневники попадут в печать.")
+        self.hint_label.setWordWrap(True)
+        layout.addWidget(self.hint_label)
+
+        layout.addWidget(QLabel("Дневники к печати:"))
+        self.records_list = QListWidget()
+        layout.addWidget(self.records_list, 1)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        preview_button = QPushButton("Предпросмотр")
+        preview_button.clicked.connect(self.preview_print)
+        buttons.addWidget(preview_button)
+        close_button = QPushButton("Закрыть")
+        close_button.clicked.connect(self.reject)
+        buttons.addWidget(close_button)
+        layout.addLayout(buttons)
+
+    def refresh_records(self, *args):
+        state = self.db.get_case_print_state(self.case_id)
+        mode = self.mode_combo.currentData()
+        records = self.db.get_diary_records_for_case(self.patient_id, self.case_id, only_unprinted=False)
+
+        self.records_list.clear()
+        for record in records:
+            printed_text = "новый"
+            if record[12]:
+                printed_text = f"уже печатался {record[12][:10]}"
+            item = QListWidgetItem(f"{_format_diary_date(record[2])} - {printed_text}")
+            item.setData(Qt.UserRole, record)
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            if mode == "new":
+                checked = not bool(record[12])
+            elif mode == "all":
+                checked = True
+            else:
+                checked = False
+            item.setCheckState(Qt.Checked if checked else Qt.Unchecked)
+            self.records_list.addItem(item)
+
+        last_print = state[2]
+        if last_print:
+            last_print = last_print[:16].replace("T", " ")
+            if mode == "reprint":
+                text = (
+                    f"Последняя печать дневников: {last_print}. "
+                    "Перепечатка не меняет отметки печати."
+                )
+            else:
+                text = (
+                    f"Последняя печать дневников: {last_print}. "
+                    "Невидимые дневники сохранят свое место на листе белым текстом."
+                )
+            self.state_label.setText(text)
+        else:
+            self.state_label.setText("Ранее дневники по этой истории не отмечались как напечатанные.")
+
+        if mode == "reprint":
+            self.hint_label.setText(
+                "Выберите нужные дневники галочками. Невыбранные останутся в разметке белым текстом."
+            )
+        elif mode == "new":
+            self.hint_label.setText(
+                "Новые дневники отмечены галочками. Уже напечатанные пойдут белым текстом и сохранят место на листе."
+            )
+        else:
+            self.hint_label.setText("Все дневники будут напечатаны черным текстом.")
+
+    def selected_records(self):
+        records = []
+        for row in range(self.records_list.count()):
+            item = self.records_list.item(row)
+            if item.checkState() == Qt.Checked:
+                records.append(item.data(Qt.UserRole))
+        return records
+
+    def all_records(self):
+        records = []
+        for row in range(self.records_list.count()):
+            records.append(self.records_list.item(row).data(Qt.UserRole))
+        return records
+
+    def preview_print(self):
+        all_records = self.all_records()
+        visible_records = self.selected_records()
+        if not visible_records:
+            QMessageBox.warning(self, "Ошибка", "Выберите хотя бы один дневник.")
+            return
+
+        visible_ids = {record[0] for record in visible_records}
+        html_content = self.build_print_html(all_records, visible_ids)
+
+        printer = QPrinter(QPrinter.HighResolution)
+        printer.setPageSize(QPageSize(QPageSize.A4))
+        printer.setPageMargins(QMarginsF(5, 5, 5, 7), QPageLayout.Millimeter)
+
+        preview = QPrintPreviewDialog(printer, self)
+        preview.setWindowTitle("Предварительный просмотр дневников")
+
+        def handle_paint(printer):
+            document = QTextDocument()
+            document.setDefaultFont(QFont("Segoe UI", 9))
+            document.setHtml(html_content)
+            document.print_(printer)
+
+        preview.paintRequested.connect(handle_paint)
+        preview.exec()
+
+        if self.mode_combo.currentData() == "reprint":
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Отметить печать",
+            "Отметить видимые дневники как напечатанные?",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        batch_id = uuid.uuid4().hex[:10]
+        printed_at = datetime.now().isoformat()
+        record_ids = [record[0] for record in visible_records]
+        self.db.mark_histories_printed(record_ids, batch_id, 0, printed_at=printed_at)
+        self.db.update_case_diary_print_state(self.case_id, 0, batch_id, printed_at=printed_at)
+        QMessageBox.information(self, "Готово", "Видимые дневники отмечены как напечатанные.")
+        self.refresh_records()
+
+    def build_print_html(self, records, visible_ids):
+        blocks = []
+        for record in records:
+            content, _ = _diary_content_from_record(record)
+            is_visible = record[0] in visible_ids
+            visibility_class = "visible" if is_visible else "invisible"
+            if not is_visible:
+                content = _make_invisible_print_html(content)
+            blocks.append(f"""
+                <div class="diary-entry {visibility_class}">
+                    <div class="diary-date">Дата: {html.escape(_format_diary_date(record[2]))}</div>
+                    {content}
+                </div>
+            """)
+
+        return f"""
+        <html>
+        <head>
+        <style>
+            body {{
+                font-family: "Segoe UI", Arial, sans-serif;
+                font-size: 9pt;
+                line-height: 1.22;
+                margin: 0;
+            }}
+            .diary-entry {{
+                page-break-inside: avoid;
+                margin-bottom: 4mm;
+            }}
+            .vision-block,
+            .vision-block tr,
+            .vision-block td,
+            .vision-block table {{
+                page-break-inside: avoid;
+                break-inside: avoid;
+            }}
+            .diary-entry.invisible,
+            .diary-entry.invisible * {{
+                visibility: hidden;
+                color: #ffffff !important;
+                border-color: #ffffff !important;
+                background: transparent !important;
+            }}
+            .diary-date {{
+                margin-bottom: 2mm;
+            }}
+            table {{
+                font-family: "Segoe UI", Arial, sans-serif;
+                font-size: 9pt;
+            }}
+        </style>
+        </head>
+        <body>
+            {''.join(blocks)}
+        </body>
+        </html>
+        """
 
 
 class DischargeDialog(QDialog):

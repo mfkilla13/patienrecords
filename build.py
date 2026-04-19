@@ -69,6 +69,7 @@ def build_with_pyinstaller():
         '--windowed',
         '--name=MedQT',
         '--add-data=data:data',
+        '--add-data=templates:templates',
         '--add-data=widgets:widgets',
         '--add-data=windows:windows',
         '--hidden-import=PySide6',

@@ -229,6 +229,14 @@ class MedicalApp(QMainWindow):
                 self._set_main_visible(True)
             except Exception:
                 pass
+        else:
+            previous_widget = self._nav_stack[-1]
+            try:
+                self.navigation.setCurrentWidget(previous_widget)
+            except Exception:
+                pass
+            self.navigation.show()
+            self.back_action.setEnabled(True)
 
     def _open_diagnosis_manager(self):
         from windows.primary_exam import DiagnosisManagerDialog

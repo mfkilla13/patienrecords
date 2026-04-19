@@ -3,7 +3,7 @@ from pathlib import Path
 from datetime import datetime
 
 class Database:
-    CURRENT_SCHEMA_VERSION = 2
+    CURRENT_SCHEMA_VERSION = 3
 
     def __init__(self, db_name='patients.db'):
         self.db_name = db_name
@@ -77,6 +77,15 @@ class Database:
                 diag_comorbid TEXT,
                 history_id INTEGER,
                 FOREIGN KEY (patient_id) REFERENCES patients (id)
+            )
+        ''')
+        self.conn.execute('''
+            CREATE TABLE IF NOT EXISTS case_print_state (
+                case_id INTEGER PRIMARY KEY,
+                diary_current_page_used_mm INTEGER NOT NULL DEFAULT 0,
+                diary_last_printed_at TEXT,
+                diary_last_batch_id TEXT,
+                FOREIGN KEY (case_id) REFERENCES medical_cases (id)
             )
         ''')
         # Appointments / plan items tied to a specific history
@@ -165,6 +174,9 @@ class Database:
             ('diag_clinical', 'diag_clinical TEXT DEFAULT ""'),
             ('diag_comorbid', 'diag_comorbid TEXT DEFAULT ""'),
             ('history_id', 'history_id INTEGER'),
+            ('printed_at', 'printed_at TEXT'),
+            ('print_batch_id', 'print_batch_id TEXT'),
+            ('print_top_offset_mm', 'print_top_offset_mm INTEGER'),
         ])
         self._ensure_columns('appointments', [
             ('history_id', 'history_id INTEGER'),
@@ -431,6 +443,10 @@ class Database:
         ''', (patient_id,))
         self.conn.execute('DELETE FROM diagnostics WHERE patient_id = ?', (patient_id,))
         self.conn.execute('DELETE FROM histories WHERE patient_id = ?', (patient_id,))
+        self.conn.execute('''
+            DELETE FROM case_print_state
+            WHERE case_id IN (SELECT id FROM medical_cases WHERE patient_id = ?)
+        ''', (patient_id,))
         self.conn.execute('DELETE FROM medical_cases WHERE patient_id = ?', (patient_id,))
         self.conn.execute('DELETE FROM patients WHERE id = ?', (patient_id,))
         self.conn.commit()
@@ -442,6 +458,58 @@ class Database:
     def get_history_by_id(self, record_id):
         cursor = self.conn.execute('SELECT id, patient_id, visit_date, record_type, examination, diagnosis, treatment, notes, diag_admission, diag_clinical, diag_comorbid, history_id FROM histories WHERE id = ?', (record_id,))
         return cursor.fetchone()
+
+    def get_diary_records_for_case(self, patient_id, logical_history_id, only_unprinted=False):
+        params = [patient_id, logical_history_id]
+        printed_filter = ''
+        if only_unprinted:
+            printed_filter = ' AND printed_at IS NULL'
+        cursor = self.conn.execute(f'''
+            SELECT id, patient_id, visit_date, record_type, examination, diagnosis, treatment, notes,
+                   diag_admission, diag_clinical, diag_comorbid, history_id,
+                   printed_at, print_batch_id, print_top_offset_mm
+              FROM histories
+             WHERE patient_id = ?
+               AND history_id = ?
+               AND record_type = 'diary'
+               {printed_filter}
+             ORDER BY visit_date ASC, id ASC
+        ''', params)
+        return cursor.fetchall()
+
+    def get_case_print_state(self, case_id):
+        cursor = self.conn.execute('''
+            SELECT case_id, diary_current_page_used_mm, diary_last_printed_at, diary_last_batch_id
+              FROM case_print_state
+             WHERE case_id = ?
+        ''', (case_id,))
+        row = cursor.fetchone()
+        if row:
+            return row
+        return (case_id, 0, None, None)
+
+    def mark_histories_printed(self, record_ids, batch_id, top_offset_mm, printed_at=None):
+        if not record_ids:
+            return
+        printed_at = printed_at or datetime.now().isoformat()
+        self.conn.executemany(
+            'UPDATE histories SET printed_at = ?, print_batch_id = ?, print_top_offset_mm = ? WHERE id = ?',
+            [(printed_at, batch_id, top_offset_mm, record_id) for record_id in record_ids],
+        )
+        self.conn.commit()
+
+    def update_case_diary_print_state(self, case_id, used_mm, batch_id, printed_at=None):
+        printed_at = printed_at or datetime.now().isoformat()
+        self.conn.execute('''
+            INSERT INTO case_print_state (
+                case_id, diary_current_page_used_mm, diary_last_printed_at, diary_last_batch_id
+            ) VALUES (?, ?, ?, ?)
+            ON CONFLICT(case_id) DO UPDATE SET
+                diary_current_page_used_mm = excluded.diary_current_page_used_mm,
+                diary_last_printed_at = excluded.diary_last_printed_at,
+                diary_last_batch_id = excluded.diary_last_batch_id
+        ''', (case_id, int(used_mm), printed_at, batch_id))
+        self.conn.commit()
 
     def update_history(self, history_id_row, record_type, examination, diagnosis, treatment, notes, visit_date=None, diag_admission='', diag_clinical='', diag_comorbid='', logical_history_id=None):
         if visit_date is not None:
