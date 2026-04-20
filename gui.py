@@ -19,6 +19,7 @@ from windows.edit_record import EditRecordWindow
 from windows.create_history_wizard import CreateHistoryWizard
 from PySide6.QtWidgets import QStackedWidget, QToolBar
 from address_book import get_cities, get_streets, remember_address
+from app_version import app_title
 
 SORT_ROLE = Qt.UserRole + 50
 
@@ -34,7 +35,7 @@ class MedicalApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.db = Database()
-        self.setWindowTitle("Medical Patient Records")
+        self.setWindowTitle(app_title())
         self.resize(1024, 768)
         self.center_on_screen()
         self.create_widgets()
