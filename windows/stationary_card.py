@@ -1336,6 +1336,7 @@ class DiaryPrintDialog(QDialog):
                     <div class="diary-date">Дата: {html.escape(_format_diary_date(record[2]))}</div>
                     {content}
                 </div>
+                <br>
             """)
 
         return f"""

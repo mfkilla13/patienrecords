@@ -76,7 +76,7 @@ def _diary_vis_html(data):
     if not any([vis_od, vis_os, vgd_od, vgd_os]):
         return ""
 
-    parts = ['<table class="vision-block" border="0" cellpadding="1" cellspacing="0" style="margin-top:6px; page-break-inside:avoid;"><tr>']
+    vis_section = ""
     if vis_od or vis_os:
         od_status = _vis_status(data.get("vis_correction_od"))
         os_status = _vis_status(data.get("vis_correction_os"))
@@ -86,78 +86,41 @@ def _diary_vis_html(data):
         os_corr = _diopter_text(data.get("vis_os_corr")) if os_has_corr else ""
         od_result = (data.get("vis_od_result") or "").strip() if od_has_corr else ""
         os_result = (data.get("vis_os_result") or "").strip() if os_has_corr else ""
-        parts.append(f'''
-            <td style="vertical-align:middle; padding-right:4px; white-space:nowrap;"><b>Vis</b></td>
-            <td style="text-align:center; padding:0 4px; white-space:nowrap;">
-                <table border="0" cellpadding="1" cellspacing="0">
-                    <tr><td style="border-bottom:1px solid black;">OD</td></tr>
-                    <tr><td>OS</td></tr>
-                </table>
-            </td>
-            <td style="vertical-align:middle; padding:0 4px; white-space:nowrap;">=</td>
-            <td style="text-align:center; padding:0 4px; white-space:nowrap;">
-                <table border="0" cellpadding="1" cellspacing="0">
-                    <tr><td style="border-bottom:1px solid black;">{_escape(vis_od) or "—"}</td></tr>
-                    <tr><td>{_escape(vis_os) or "—"}</td></tr>
-                </table>
-            </td>
-            <td style="text-align:center; padding:0 8px; white-space:nowrap; min-width:70px;">
-                <table border="0" cellpadding="1" cellspacing="0">
-                    <tr><td style="border-bottom:1px solid black; white-space:nowrap;">{_escape(od_status)}</td></tr>
-                    <tr><td style="white-space:nowrap;">{_escape(os_status)}</td></tr>
-                </table>
-            </td>
-            <td style="text-align:center; padding:0 4px; white-space:nowrap;">
-                <table border="0" cellpadding="1" cellspacing="0">
-                    <tr><td style="border-bottom:1px solid black;">{_escape(od_corr)}</td></tr>
-                    <tr><td>{_escape(os_corr)}</td></tr>
-                </table>
-            </td>
-            <td style="vertical-align:middle; padding:0 4px; white-space:nowrap;">=</td>
-            <td style="text-align:center; padding:0 4px; white-space:nowrap;">
-                <table border="0" cellpadding="1" cellspacing="0">
-                    <tr><td style="border-bottom:1px solid black;">{_escape(od_result)}</td></tr>
-                    <tr><td>{_escape(os_result)}</td></tr>
-                </table>
-            </td>
-            <td style="width:28px;"></td>
-        ''')
+        vis_section = render_template("diary_vision_vis.html", {
+            "vis_od": _escape(vis_od) or "—",
+            "vis_os": _escape(vis_os) or "—",
+            "od_status": _escape(od_status),
+            "os_status": _escape(os_status),
+            "od_corr": _escape(od_corr),
+            "os_corr": _escape(os_corr),
+            "od_result": _escape(od_result),
+            "os_result": _escape(os_result),
+        })
 
+    vgd_section = ""
     if vgd_od or vgd_os:
-        parts.append(f'''
-            <td style="vertical-align:middle; padding-right:4px; white-space:nowrap;"><b>ВГД</b></td>
-            <td style="text-align:center; padding:0 4px; white-space:nowrap;">
-                <table border="0" cellpadding="1" cellspacing="0">
-                    <tr><td style="border-bottom:1px solid black;">OD</td></tr>
-                    <tr><td>OS</td></tr>
-                </table>
-            </td>
-            <td style="vertical-align:middle; padding:0 4px; white-space:nowrap;">=</td>
-            <td style="text-align:center; padding:0 4px; white-space:nowrap;">
-                <table border="0" cellpadding="1" cellspacing="0">
-                    <tr><td style="border-bottom:1px solid black;">{_escape(vgd_od) or "—"}</td></tr>
-                    <tr><td>{_escape(vgd_os) or "—"}</td></tr>
-                </table>
-            </td>
-            <td style="white-space:nowrap;">мм.рт.ст.</td>
-        ''')
-    parts.append("</tr></table>")
-    return "".join(parts)
+        vgd_section = render_template("diary_vision_vgd.html", {
+            "vgd_od": _escape(vgd_od) or "—",
+            "vgd_os": _escape(vgd_os) or "—",
+        })
+
+    return render_template("diary_vision.html", {
+        "vis_section": vis_section,
+        "vgd_section": vgd_section,
+    })
 
 
-def _diary_treatment_basis_lines(data):
+def _diary_treatment_basis_items(data):
     basis = data.get("basis") or {}
-    lines = []
-    for label, category in TREATMENT_CATS:
+    items = []
+    for _label, category in TREATMENT_CATS:
         item = basis.get(category) or {}
         selected = item.get("selected") or []
         note = item.get("note") or ""
-        text = "; ".join(selected)
-        if note:
-            text = f"{text} (прим.: {note})" if text else f"(прим.: {note})"
-        if text:
-            lines.append(f"<b>{_escape(label)}:</b> {_escape(text)}")
-    return lines
+        items.extend(str(value).strip() for value in selected if str(value).strip())
+        if note.strip():
+            items.append(f"прим.: {note.strip()}")
+    return items
 
 
 def render_diary_html(data):
@@ -180,13 +143,20 @@ def render_diary_html(data):
         if value:
             right_parts.append(f"<div>{label}: {_escape(value)}</div>")
 
-    treatment = data.get("treatment") or ""
-    if treatment:
-        right_parts.append(f'<div>Лечение: {_escape(treatment).replace(chr(10), "<br>")}</div>')
+    treatment = (data.get("treatment") or "").strip()
+    basis_items = _diary_treatment_basis_items(data)
+    if treatment or basis_items:
+        treatment_text = _escape(treatment).replace(chr(10), "<br>")
+        basis_text = _escape(", ".join(basis_items))
+        if treatment_text and basis_text:
+            treatment_text = f"{treatment_text} {basis_text}"
+        elif basis_text:
+            treatment_text = basis_text
+        right_parts.append(f'<div>Лечение: {treatment_text}</div>')
 
-    basis_lines = _diary_treatment_basis_lines(data)
-    if basis_lines:
-        right_parts.append("<div>" + "; ".join(basis_lines) + "</div>")
+    discharge_note = data.get("discharge_note") or ""
+    if discharge_note.strip():
+        right_parts.append(f'<div>{_escape(discharge_note.strip()).replace(chr(10), "<br>")}</div>')
 
     return render_template("diary.html", {
         "left": "".join(left_parts),
@@ -323,6 +293,11 @@ class DiaryWindow(QDialog):
         self.treatment_text.setMaximumHeight(90)
         treatment_layout.addWidget(self.treatment_text)
 
+        treatment_layout.addWidget(QLabel("для выписки"))
+        self.discharge_note_text = QTextEdit()
+        self.discharge_note_text.setMaximumHeight(70)
+        treatment_layout.addWidget(self.discharge_note_text)
+
         self.basis_box = QGroupBox("Обоснование лечения")
         self.basis_box.setVisible(False)
         basis_layout = QGridLayout(self.basis_box)
@@ -423,108 +398,6 @@ class DiaryWindow(QDialog):
             self.treatment_text.setPlainText("к лечению добавить")
         self.basis_box.setVisible(True)
 
-    def _escape(self, value):
-        return html.escape(value or "")
-
-    def _diopter_text(self, value):
-        text = (value or "").strip()
-        if not text:
-            return ""
-        if text.lower().endswith(("d", "д")):
-            return text
-        return f"{text}D"
-
-    def _vis_status(self, text):
-        if text == "пусто":
-            return ""
-        if text == "n.k. (не коррег.)":
-            return "n.k."
-        return text
-
-    def _vis_html(self):
-        vis_od = self.vis_od.text().strip()
-        vis_os = self.vis_os.text().strip()
-        vgd_od = self.vgd_od.text().strip()
-        vgd_os = self.vgd_os.text().strip()
-        if not any([vis_od, vis_os, vgd_od, vgd_os]):
-            return ""
-
-        parts = ['<table class="vision-block" border="0" cellpadding="1" cellspacing="0" style="margin-top:6px; page-break-inside:avoid;"><tr>']
-        if vis_od or vis_os:
-            od_status = self._vis_status(self.vis_correction_od.currentText())
-            os_status = self._vis_status(self.vis_correction_os.currentText())
-            od_has_corr = self.vis_correction_od.currentText() == "с коррекцией"
-            os_has_corr = self.vis_correction_os.currentText() == "с коррекцией"
-            od_corr = self._diopter_text(self.vis_od_corr.text()) if od_has_corr else ""
-            os_corr = self._diopter_text(self.vis_os_corr.text()) if os_has_corr else ""
-            od_result = self.vis_od_result.text().strip() if od_has_corr else ""
-            os_result = self.vis_os_result.text().strip() if os_has_corr else ""
-            parts.append(f'''
-                <td style="vertical-align:middle; padding-right:4px;"><b>Vis</b></td>
-                <td style="text-align:center; padding:0 4px;">
-                    <table border="0" cellpadding="1" cellspacing="0">
-                        <tr><td style="border-bottom:1px solid black;">OD</td></tr>
-                        <tr><td>OS</td></tr>
-                    </table>
-                </td>
-                <td style="vertical-align:middle; padding:0 4px;">=</td>
-                <td style="text-align:center; padding:0 4px;">
-                    <table border="0" cellpadding="1" cellspacing="0">
-                        <tr><td style="border-bottom:1px solid black;">{self._escape(vis_od) or "—"}</td></tr>
-                        <tr><td>{self._escape(vis_os) or "—"}</td></tr>
-                    </table>
-                </td>
-                <td style="text-align:center; padding:0 7px;">
-                    <table border="0" cellpadding="1" cellspacing="0">
-                        <tr><td style="border-bottom:1px solid black;">{self._escape(od_status)}</td></tr>
-                        <tr><td>{self._escape(os_status)}</td></tr>
-                    </table>
-                </td>
-                <td style="text-align:center; padding:0 4px;">
-                    <table border="0" cellpadding="1" cellspacing="0">
-                        <tr><td style="border-bottom:1px solid black;">{self._escape(od_corr)}</td></tr>
-                        <tr><td>{self._escape(os_corr)}</td></tr>
-                    </table>
-                </td>
-                <td style="vertical-align:middle; padding:0 4px;">=</td>
-                <td style="text-align:center; padding:0 4px;">
-                    <table border="0" cellpadding="1" cellspacing="0">
-                        <tr><td style="border-bottom:1px solid black;">{self._escape(od_result)}</td></tr>
-                        <tr><td>{self._escape(os_result)}</td></tr>
-                    </table>
-                </td>
-                <td style="width:45px;"></td>
-            ''')
-
-        if vgd_od or vgd_os:
-            parts.append(f'''
-                <td style="vertical-align:middle; padding-right:4px;"><b>ВГД</b></td>
-                <td style="text-align:center; padding:0 4px;">
-                    <table border="0" cellpadding="1" cellspacing="0">
-                        <tr><td style="border-bottom:1px solid black;">OD</td></tr>
-                        <tr><td>OS</td></tr>
-                    </table>
-                </td>
-                <td style="vertical-align:middle; padding:0 4px;">=</td>
-                <td style="text-align:center; padding:0 4px;">
-                    <table border="0" cellpadding="1" cellspacing="0">
-                        <tr><td style="border-bottom:1px solid black;">{self._escape(vgd_od) or "—"}</td></tr>
-                        <tr><td>{self._escape(vgd_os) or "—"}</td></tr>
-                    </table>
-                </td>
-                <td>мм.рт.ст.</td>
-            ''')
-        parts.append("</tr></table>")
-        return "".join(parts)
-
-    def _treatment_basis_lines(self):
-        lines = []
-        for label, button in self.treatment_basis_fields.values():
-            text = button.get_text()
-            if text:
-                lines.append(f"<b>{self._escape(label)}:</b> {self._escape(text)}")
-        return lines
-
     def _build_diary_html(self, data):
         return render_diary_html(data)
 
@@ -583,6 +456,7 @@ class DiaryWindow(QDialog):
             "od_text": self.od_text.text().strip(),
             "ou_text": self.ou_text.text().strip(),
             "treatment": self.treatment_text.toPlainText().strip(),
+            "discharge_note": self.discharge_note_text.toPlainText().strip(),
             "basis": basis,
         }
         return data
@@ -630,6 +504,7 @@ class DiaryWindow(QDialog):
         self.od_text.setText(data.get("od_text", ""))
         self.ou_text.setText(data.get("ou_text", ""))
         self.treatment_text.setPlainText(data.get("treatment", ""))
+        self.discharge_note_text.setPlainText(data.get("discharge_note", ""))
 
         basis = data.get("basis", {})
         has_basis = False
