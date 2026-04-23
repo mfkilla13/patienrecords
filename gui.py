@@ -123,6 +123,39 @@ class MedicalApp(QMainWindow):
         search_layout.addLayout(button_layout)
         layout.addLayout(search_layout)
 
+        self.inpatient_count_label = QLabel("0")
+        self.inpatient_count_label.setAlignment(Qt.AlignCenter)
+        self.inpatient_count_label.setStyleSheet("""
+            font-size: 12pt;
+            font-weight: 700;
+            color: #1f1f1f;
+            padding: 0;
+            background-color: #2ecc71;
+        """)
+        self.inpatient_caption_label = QLabel("В отделении")
+        self.inpatient_caption_label.setAlignment(Qt.AlignCenter)
+        self.inpatient_caption_label.setStyleSheet("""
+            font-size: 6pt;
+            font-weight: 400;
+            color: #4a4a4a;
+            padding: 0;
+        """)
+        census_box = QFrame()
+        census_box.setStyleSheet("""
+            QFrame {
+                background-color: #ffffff;
+                border: 1px solid #cfcfcf;
+                border-radius: 6px;
+                padding: 1px 1px;
+            }
+        """)
+        census_layout = QVBoxLayout(census_box)
+        census_layout.setContentsMargins(8, 3, 8, 3)
+        census_layout.setSpacing(0)
+        census_layout.addWidget(self.inpatient_count_label)
+        census_layout.addWidget(self.inpatient_caption_label)
+        census_box.setFixedWidth(86)
+
         archive_filters = QHBoxLayout()
         archive_filters.addWidget(QLabel("Фильтр:"))
         archive_filters.addWidget(QLabel("Год выписки:"))
@@ -144,6 +177,7 @@ class MedicalApp(QMainWindow):
         self.archive_reset_button.clicked.connect(self._reset_archive_filters)
         archive_filters.addWidget(self.archive_reset_button)
         archive_filters.addStretch(1)
+        archive_filters.addWidget(census_box)
         layout.addLayout(archive_filters)
 
         self.case_tabs = QTabWidget()
@@ -617,6 +651,7 @@ class MedicalApp(QMainWindow):
     def load_patients(self):
         active_cases = self.db.get_cases("active")
         archived_cases = self.db.get_cases("archived")
+        self.inpatient_count_label.setText(str(len(active_cases)))
         archived_summaries = [self._get_case_summary(case) for case in archived_cases]
         self._refresh_archive_filters(archived_summaries)
         self._populate_case_table(self.tree, active_cases)

@@ -86,15 +86,29 @@ def _diary_vis_html(data):
         os_corr = _diopter_text(data.get("vis_os_corr")) if os_has_corr else ""
         od_result = (data.get("vis_od_result") or "").strip() if od_has_corr else ""
         os_result = (data.get("vis_os_result") or "").strip() if os_has_corr else ""
+        correction_section = ""
+        if od_has_corr or os_has_corr:
+            correction_section = f"""
+                <td style="text-align:center; padding:0 4px; white-space:nowrap;">
+                  <table border="0" cellpadding="1" cellspacing="0">
+                    <tr><td style="border-bottom:1px solid black;">{_escape(od_corr)}</td></tr>
+                    <tr><td>{_escape(os_corr)}</td></tr>
+                  </table>
+                </td>
+                <td style="vertical-align:middle; padding:0 4px; white-space:nowrap;">=</td>
+                <td style="text-align:center; padding:0 4px; white-space:nowrap;">
+                  <table border="0" cellpadding="1" cellspacing="0">
+                    <tr><td style="border-bottom:1px solid black;">{_escape(od_result)}</td></tr>
+                    <tr><td>{_escape(os_result)}</td></tr>
+                  </table>
+                </td>
+            """
         vis_section = render_template("diary_vision_vis.html", {
             "vis_od": _escape(vis_od) or "—",
             "vis_os": _escape(vis_os) or "—",
             "od_status": _escape(od_status),
             "os_status": _escape(os_status),
-            "od_corr": _escape(od_corr),
-            "os_corr": _escape(os_corr),
-            "od_result": _escape(od_result),
-            "os_result": _escape(os_result),
+            "correction_section": correction_section,
         })
 
     vgd_section = ""
