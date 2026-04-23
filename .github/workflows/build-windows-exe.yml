@@ -25,30 +25,35 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
       
-      - name: Build Windows EXE
+      - name: Build Windows folder
         run: |
-          pyinstaller --onefile `
+          pyinstaller --onedir `
             --windowed `
             --name=MedQT `
             --add-data "data:data" `
+            --add-data "templates:templates" `
             --add-data "widgets:widgets" `
             --add-data "windows:windows" `
             --distpath=dist `
             --workpath=build `
             --specpath=. `
             main.py
+
+      - name: Pack Windows folder
+        run: |
+          Compress-Archive -Path dist/MedQT/* -DestinationPath dist/MedQT-win.zip -Force
       
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MedQT-exe
-          path: dist/MedQT.exe
+          name: MedQT-win
+          path: dist/MedQT-win.zip
           retention-days: 30
 
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          files: dist/MedQT.exe
+          files: dist/MedQT-win.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

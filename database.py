@@ -1,16 +1,27 @@
 import sqlite3
 from pathlib import Path
 from datetime import datetime
+import sys
 
 class Database:
     CURRENT_SCHEMA_VERSION = 3
 
     def __init__(self, db_name='patients.db'):
-        self.db_name = db_name
+        self.db_name = self._resolve_db_path(db_name)
         self._db_file_existed_before_connect = self._database_file_exists()
-        self.conn = sqlite3.connect(db_name)
+        self.conn = sqlite3.connect(self.db_name)
         self.conn.execute('PRAGMA foreign_keys = ON')
         self.migrate_schema()
+
+    def _resolve_db_path(self, db_name):
+        if db_name == ':memory:':
+            return db_name
+        db_path = Path(db_name)
+        if db_path.is_absolute():
+            return str(db_path)
+        if getattr(sys, "frozen", False):
+            return str(Path(sys.executable).resolve().parent / db_name)
+        return str((Path(__file__).resolve().parent / db_name).resolve())
 
     def migrate_schema(self):
         user_version = self._get_user_version()
