@@ -7,9 +7,6 @@ from gui import MedicalApp
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     
-    # Включаем High DPI поддержку
-    app.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
-    
     # Используем Fusion стиль для единообразия на всех платформах
     app.setStyle("Fusion")
     

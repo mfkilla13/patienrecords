@@ -1,8 +1,8 @@
 import html
 import json
 import uuid
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QTabWidget, QWidget as QtWidget, QListWidget, QListWidgetItem, QMessageBox, QInputDialog, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QDialog, QComboBox
-from PySide6.QtCore import Qt, QMarginsF, QDate
+from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QTabWidget, QWidget as QtWidget, QListWidget, QListWidgetItem, QMessageBox, QInputDialog, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QDialog, QComboBox
+from PySide6.QtCore import Qt, QMarginsF, QDate, QSizeF
 from PySide6.QtGui import QTextDocument, QPageLayout, QPageSize, QTextCursor, QTextCharFormat, QFont, QTextTableFormat, QTextBlockFormat
 from PySide6.QtPrintSupport import QPrintPreviewDialog, QPrinter
 from datetime import datetime
@@ -45,6 +45,49 @@ def _format_ru_full_date(value):
         "июля", "августа", "сентября", "октября", "ноября", "декабря",
     ]
     return f"«{dt.day:02d}» {months[dt.month - 1]} {dt.year} г."
+
+
+def _print_document_without_page_numbers(printer, document):
+    try:
+        cloned = document.clone()
+
+        src_block = document.firstBlock()
+        dst_block = cloned.firstBlock()
+        while src_block.isValid() and dst_block.isValid():
+            if src_block.layout() is not None and dst_block.layout() is not None:
+                dst_block.layout().setFormats(src_block.layout().formats())
+            src_block = src_block.next()
+            dst_block = dst_block.next()
+
+        layout = cloned.documentLayout()
+        try:
+            layout.setPaintDevice(printer)
+        except Exception:
+            pass
+
+        source_dpi_x = 96.0
+        source_dpi_y = 96.0
+        try:
+            screen = QApplication.primaryScreen()
+            if screen is not None:
+                source_dpi_x = screen.logicalDotsPerInchX()
+                source_dpi_y = screen.logicalDotsPerInchY()
+        except Exception:
+            pass
+
+        horizontal_margin = int((2 / 2.54) * source_dpi_x)
+        vertical_margin = int((2 / 2.54) * source_dpi_y)
+        fmt = cloned.rootFrame().frameFormat()
+        fmt.setLeftMargin(horizontal_margin)
+        fmt.setRightMargin(horizontal_margin)
+        fmt.setTopMargin(vertical_margin)
+        fmt.setBottomMargin(vertical_margin)
+        cloned.rootFrame().setFrameFormat(fmt)
+
+        cloned.setPageSize(QSizeF(printer.width(), printer.height()))
+        cloned.print_(printer)
+    except Exception:
+        document.print_(printer)
 
 
 def _format_diary_date(value):
@@ -796,8 +839,7 @@ class StationaryCardPage(QWidget):
             
             # Основное содержимое
             cursor.insertHtml(html_content)
-            
-            document.print_(printer)
+            _print_document_without_page_numbers(printer, document)
         
         preview.paintRequested.connect(handle_paint)
         preview.exec()
@@ -959,7 +1001,7 @@ class StationaryCardPage(QWidget):
             document = QTextDocument()
             document.setDefaultFont(QFont("Times New Roman", 12))
             document.setHtml(self._build_discharge_form_html(history))
-            document.print_(printer)
+            _print_document_without_page_numbers(printer, document)
 
         preview.paintRequested.connect(handle_paint)
         preview.exec()
@@ -1298,7 +1340,7 @@ class DiaryPrintDialog(QDialog):
             document = QTextDocument()
             document.setDefaultFont(QFont("Segoe UI", 9))
             document.setHtml(html_content)
-            document.print_(printer)
+            _print_document_without_page_numbers(printer, document)
 
         preview.paintRequested.connect(handle_paint)
         preview.exec()

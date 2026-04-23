@@ -10,7 +10,8 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QDateEdit
 )
 from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QAction, QFont, QTextDocument, QColor
+from PySide6.QtGui import QAction, QFont, QTextDocument, QColor, QDesktopServices
+from PySide6.QtCore import QUrl
 from database import Database
 from windows.stationary_card import StationaryCardPage
 from windows.add_record import AddRecordWindow
@@ -20,6 +21,7 @@ from windows.create_history_wizard import CreateHistoryWizard
 from PySide6.QtWidgets import QStackedWidget, QToolBar
 from address_book import get_cities, get_streets, remember_address
 from app_version import app_title
+from app_update import fetch_update_info, is_newer_version, can_auto_install_update, install_update
 
 SORT_ROLE = Qt.UserRole + 50
 
@@ -60,7 +62,11 @@ class MedicalApp(QMainWindow):
         self.manage_diag_action = QAction("Управление диагнозами", self)
         self.manage_diag_action.triggered.connect(self._open_diagnosis_manager)
         toolbar.addAction(self.manage_diag_action)
+        self.update_action = QAction("Проверить обновления", self)
+        self.update_action.triggered.connect(lambda: self.check_for_updates(manual=True))
+        toolbar.addAction(self.update_action)
         self._nav_stack = []
+        QTimer.singleShot(1500, lambda: self.check_for_updates(manual=False))
 
     def center_on_screen(self):
         # Center the main window on the available screen area
@@ -280,6 +286,49 @@ class MedicalApp(QMainWindow):
         data_dir = os.path.join(base_path, 'data')
         dialog = DiagnosisManagerDialog(self, data_dir)
         dialog.exec()
+
+    def check_for_updates(self, manual=False):
+        info = fetch_update_info()
+        if info is None:
+            if manual:
+                QMessageBox.information(self, "Обновления", "Не удалось проверить обновления.")
+            return
+
+        if not is_newer_version(info.version):
+            if manual:
+                QMessageBox.information(self, "Обновления", "У вас уже установлена последняя версия.")
+            return
+
+        notes = info.notes or "Описание изменений пока не заполнено."
+        if can_auto_install_update(info):
+            reply = QMessageBox.question(
+                self,
+                "Доступно обновление",
+                f"Доступна версия {info.version}.\n\n{notes}\n\nСкачать и установить обновление сейчас?",
+                QMessageBox.Yes | QMessageBox.No,
+            )
+            if reply == QMessageBox.Yes:
+                try:
+                    install_update(info)
+                except Exception as exc:
+                    QMessageBox.warning(self, "Обновления", f"Не удалось установить обновление:\n{exc}")
+                    return
+                QMessageBox.information(
+                    self,
+                    "Обновления",
+                    "Обновление скачано. Приложение закроется и запустится снова после установки.",
+                )
+                QApplication.instance().quit()
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Доступно обновление",
+            f"Доступна версия {info.version}.\n\n{notes}\n\nОткрыть страницу скачивания?",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if reply == QMessageBox.Yes:
+            QDesktopServices.openUrl(QUrl(info.download_url))
 
     def nav_push(self, widget):
         # show widget in stack

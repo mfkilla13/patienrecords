@@ -144,15 +144,15 @@ def render_diary_html(data):
         f"Пульс {_escape(data.get('pulse'))} уд/мин<br>" if data.get("pulse") else "",
     ]
     right_parts = [
-        f"Общее состояние: {_escape(data.get('general_state'))}<br>" if data.get("general_state") else "",
-        f"Жалобы: {_escape(data.get('complaints'))}<br>" if data.get("complaints") else "",
+        f"Общее состояние {_escape(data.get('general_state'))}<br>" if data.get("general_state") else "",
+        f"Жалобы {_escape(data.get('complaints'))}<br>" if data.get("complaints") else "",
     ]
 
     vis_html = _diary_vis_html(data)
     if vis_html:
         right_parts.append(vis_html)
 
-    for label, key in (("OS", "os_text"), ("OD", "od_text"), ("OU", "ou_text")):
+    for label, key in (("OD", "od_text"), ("OS", "os_text"), ("OU", "ou_text")):
         value = (data.get(key) or "").strip()
         if value:
             right_parts.append(f"<div>{label}: {_escape(value)}</div>")
@@ -276,12 +276,12 @@ class DiaryWindow(QDialog):
 
         eye_text_grid = QGridLayout()
         ophthalmic_layout.addLayout(eye_text_grid)
-        eye_text_grid.addWidget(QLabel("OS"), 0, 0)
-        self.os_text = QLineEdit()
-        eye_text_grid.addWidget(self.os_text, 0, 1)
-        eye_text_grid.addWidget(QLabel("OD"), 1, 0)
+        eye_text_grid.addWidget(QLabel("OD"), 0, 0)
         self.od_text = QLineEdit()
-        eye_text_grid.addWidget(self.od_text, 1, 1)
+        eye_text_grid.addWidget(self.od_text, 0, 1)
+        eye_text_grid.addWidget(QLabel("OS"), 1, 0)
+        self.os_text = QLineEdit()
+        eye_text_grid.addWidget(self.os_text, 1, 1)
         eye_text_grid.addWidget(QLabel("OU"), 2, 0)
         self.ou_text = QLineEdit()
         eye_text_grid.addWidget(self.ou_text, 2, 1)

@@ -1856,6 +1856,8 @@ class PrimaryExamWindow(QDialog):
                 html_lines.append(f'<div>{line}</div>')
             html_lines.append("<br>")
 
+        html_lines.append('<div style="margin-top:6mm; text-align:right;">Воловая А.А. __________________</div>')
+
         html_record = "".join(html_lines)
 
         # Сохраняем в зависимости от типа
