@@ -74,6 +74,8 @@ class AddRecordWindow(QDialog):
             self.open_plan(self.patient_id, self.records_table)
         elif template == "Выписной эпикриз":
             self.open_discharge_summary()
+        elif template == "Протокол операции":
+            self.open_operation_protocol(self.patient_id, self.records_table)
         else:
             self.open_add_record_window(template)
         
@@ -117,6 +119,18 @@ class AddRecordWindow(QDialog):
             anc.discharge_patient()
         else:
             QMessageBox.warning(self, "Ошибка", "Не удалось открыть форму выписки.")
+
+    def open_operation_protocol(self, patient_id, records_table):
+        from .operation_protocol import OperationProtocolWindow
+        anc = self.parent()
+        while anc is not None and not hasattr(anc, 'nav_push'):
+            anc = anc.parent()
+
+        if anc is not None:
+            anc.nav_push(OperationProtocolWindow(anc, self.db, patient_id, records_table, self.load_records_list, history_id=self.history_id))
+        else:
+            dlg = OperationProtocolWindow(self.parent(), self.db, patient_id, records_table, self.load_records_list, history_id=self.history_id)
+            dlg.show()
 
     def open_add_record_window(self, template):
         dlg = AddRecordDialog(self, self.db, self.patient_id, template, self.records_table, self.load_records_list, history_id=self.history_id)

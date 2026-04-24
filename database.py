@@ -364,8 +364,8 @@ class Database:
         cursor = self.conn.execute('SELECT * FROM patients WHERE id = ?', (patient_id,))
         return cursor.fetchone()
 
-    def add_history(self, patient_id, record_type, examination, diagnosis='', treatment='', notes='', diag_admission='', diag_clinical='', diag_comorbid='', history_id=None):
-        visit_date = datetime.now().isoformat()
+    def add_history(self, patient_id, record_type, examination, diagnosis='', treatment='', notes='', diag_admission='', diag_clinical='', diag_comorbid='', history_id=None, visit_date=None):
+        visit_date = visit_date or datetime.now().isoformat()
         cursor = self.conn.execute('INSERT INTO histories (patient_id, visit_date, record_type, examination, diagnosis, treatment, notes, diag_admission, diag_clinical, diag_comorbid, history_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                           (patient_id, visit_date, record_type, examination, diagnosis, treatment, notes, diag_admission, diag_clinical, diag_comorbid, history_id))
         self.conn.commit()

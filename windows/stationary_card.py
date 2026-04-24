@@ -763,6 +763,8 @@ class StationaryCardPage(QWidget):
             title = "Паспортная часть"
         elif record_type == "diary":
             title = ""
+        elif record_type == "operation_protocol":
+            title = "Протокол операции"
         elif record_type == "discharge_summary":
             title = "Выписной эпикриз"
         elif record_type == "history":
@@ -775,6 +777,8 @@ class StationaryCardPage(QWidget):
             formatted_date = dt.strftime("%d.%m.%Y %H:%M")
             if record_type == "diary":
                 formatted_date_only = dt.strftime("%d.%m.%Y")
+            elif record_type == "operation_protocol":
+                formatted_date_only = dt.strftime("%d.%m.%Y %H:%M")
             else:
                 formatted_date_only = dt.strftime("%d.%m.%Y") + (" " + self.admission_time if self.admission_time else "")
         except:
@@ -1172,6 +1176,8 @@ class StationaryCardPage(QWidget):
                 title = "Паспортная часть"
             elif record_type == "diary":
                 title = "Дневник"
+            elif record_type == "operation_protocol":
+                title = "Протокол операции"
             elif record_type == "discharge_summary":
                 title = "Выписной эпикриз"
             elif record_type == "history":
