@@ -1,6 +1,6 @@
 {
-  "version": "2.8.1",
+  "version": "2.8.2",
   "package_type": "zip",
-  "download_url": "https://github.com/mfkilla13/patienrecords/releases/download/v2.8.1/MedQT-win.zip",
+  "download_url": "https://github.com/mfkilla13/patienrecords/releases/download/v2.8.2/MedQT-win.zip",
   "notes": "Обновлены выписка, диагностика, печать и редактирование записей."
 }
