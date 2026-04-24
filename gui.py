@@ -698,12 +698,14 @@ class MedicalApp(QMainWindow):
         table.setSortingEnabled(True)
 
     def load_patients(self):
-        active_cases = self.db.get_cases("active")
+        all_cases = self.db.get_cases()
+        active_cases = [case for case in all_cases if (case[8] or "active") == "active"]
+        open_cases = [case for case in all_cases if (case[8] or "active") != "archived"]
         archived_cases = self.db.get_cases("archived")
         self.inpatient_count_label.setText(str(len(active_cases)))
         archived_summaries = [self._get_case_summary(case) for case in archived_cases]
         self._refresh_archive_filters(archived_summaries)
-        self._populate_case_table(self.tree, active_cases)
+        self._populate_case_table(self.tree, open_cases)
         self._populate_case_table(self.archive_tree, archived_cases)
 
     def filter_patients(self):

@@ -19,11 +19,12 @@ from PySide6.QtWidgets import (
 
 
 class OperationProtocolWindow(QDialog):
-    def __init__(self, parent, db, patient_id, records_table, load_records_list_callback, history_id=None):
+    def __init__(self, parent, db, patient_id, records_table, load_records_list_callback, history_id=None, edit_record_id=None):
         super().__init__(parent)
         self.db = db
         self.patient_id = patient_id
         self.history_id = history_id
+        self.edit_record_id = edit_record_id
         self.records_table = records_table
         self.load_records_list = load_records_list_callback
         self.setWindowTitle("Протокол операции")
@@ -111,17 +112,30 @@ class OperationProtocolWindow(QDialog):
         }
         html_record = self._build_protocol_html(data)
 
-        self.db.add_history(
-            self.patient_id,
-            "operation_protocol",
-            html_record,
-            "",
-            "",
-            json.dumps(data, ensure_ascii=False),
-            history_id=self.history_id,
-            visit_date=operation_dt.isoformat(),
-        )
-        QMessageBox.information(self, "Успех", "Протокол операции сохранен.")
+        if self.edit_record_id is not None:
+            self.db.update_history(
+                self.edit_record_id,
+                "operation_protocol",
+                html_record,
+                "",
+                "",
+                json.dumps(data, ensure_ascii=False),
+                visit_date=operation_dt.isoformat(),
+                logical_history_id=self.history_id,
+            )
+            QMessageBox.information(self, "Успех", "Протокол операции обновлен.")
+        else:
+            self.db.add_history(
+                self.patient_id,
+                "operation_protocol",
+                html_record,
+                "",
+                "",
+                json.dumps(data, ensure_ascii=False),
+                history_id=self.history_id,
+                visit_date=operation_dt.isoformat(),
+            )
+            QMessageBox.information(self, "Успех", "Протокол операции сохранен.")
         self.load_records_list(self.records_table, self.patient_id)
 
         parent = self.parent()
@@ -134,3 +148,31 @@ class OperationProtocolWindow(QDialog):
             except Exception:
                 pass
         self.accept()
+
+    def load_existing(self, history):
+        if not history:
+            return
+        data = None
+        try:
+            data = json.loads(history[7] or "")
+        except Exception:
+            data = None
+        if not isinstance(data, dict):
+            data = {}
+        self.operation_name_edit.setText(data.get("operation_name", ""))
+        self.description_edit.setPlainText(data.get("description", ""))
+        date_text = (data.get("date") or "").strip()
+        if date_text:
+            qdate = QDate.fromString(date_text, "dd.MM.yyyy")
+            if qdate.isValid():
+                self.date_edit.setDate(qdate)
+        else:
+            try:
+                self.date_edit.setDate(QDate.fromString(history[2][:10], "yyyy-MM-dd"))
+            except Exception:
+                pass
+        time_text = (data.get("time") or "").strip()
+        if time_text:
+            qtime = QTime.fromString(time_text, "HH:mm")
+            if qtime.isValid():
+                self.time_edit.setTime(qtime)

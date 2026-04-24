@@ -337,13 +337,22 @@ class Database:
         self.conn.commit()
 
     def discharge_case(self, case_id, discharge_date='', discharge_time='', outcome='', final_diagnosis='', discharge_summary='', recommendations=''):
+        self.conn.execute(
+            '''UPDATE medical_cases
+               SET discharge_date = ?, discharge_time = ?, outcome = ?, status = 'discharged',
+                   final_diagnosis = ?, discharge_summary = ?, recommendations = ?, closed_at = NULL
+               WHERE id = ?''',
+            (discharge_date, discharge_time, outcome, final_diagnosis, discharge_summary, recommendations, case_id),
+        )
+        self.conn.commit()
+
+    def archive_case(self, case_id):
         closed_at = datetime.now().isoformat()
         self.conn.execute(
             '''UPDATE medical_cases
-               SET discharge_date = ?, discharge_time = ?, outcome = ?, status = 'archived',
-                   final_diagnosis = ?, discharge_summary = ?, recommendations = ?, closed_at = ?
+               SET status = 'archived', closed_at = ?
                WHERE id = ?''',
-            (discharge_date, discharge_time, outcome, final_diagnosis, discharge_summary, recommendations, closed_at, case_id),
+            (closed_at, case_id),
         )
         self.conn.commit()
 
@@ -479,10 +488,10 @@ class Database:
             SELECT id, patient_id, visit_date, record_type, examination, diagnosis, treatment, notes,
                    diag_admission, diag_clinical, diag_comorbid, history_id,
                    printed_at, print_batch_id, print_top_offset_mm
-              FROM histories
+             FROM histories
              WHERE patient_id = ?
                AND history_id = ?
-               AND record_type = 'diary'
+               AND record_type IN ('diary', 'operation_protocol')
                {printed_filter}
              ORDER BY visit_date ASC, id ASC
         ''', params)

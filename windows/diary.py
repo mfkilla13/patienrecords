@@ -179,11 +179,12 @@ def render_diary_html(data):
 
 
 class DiaryWindow(QDialog):
-    def __init__(self, parent, db, patient_id, records_table, load_records_list_callback, history_id=None):
+    def __init__(self, parent, db, patient_id, records_table, load_records_list_callback, history_id=None, edit_record_id=None):
         super().__init__(parent)
         self.db = db
         self.patient_id = patient_id
         self.history_id = history_id
+        self.edit_record_id = edit_record_id
         self.records_table = records_table
         self.load_records_list = load_records_list_callback
         self.setWindowTitle("Дневник")
@@ -418,16 +419,35 @@ class DiaryWindow(QDialog):
     def save_diary(self):
         data = self._state()
         html_record = self._build_diary_html(data)
-        self.db.add_history(
-            self.patient_id,
-            "diary",
-            html_record,
-            "",
-            data.get("treatment", ""),
-            json.dumps(data, ensure_ascii=False),
-            history_id=self.history_id,
-        )
-        QMessageBox.information(self, "Успех", "Дневник сохранен.")
+        visit_date = None
+        try:
+            visit_date = self.date_edit.date().toPython().isoformat()
+        except Exception:
+            pass
+        if self.edit_record_id is not None:
+            self.db.update_history(
+                self.edit_record_id,
+                "diary",
+                html_record,
+                "",
+                data.get("treatment", ""),
+                json.dumps(data, ensure_ascii=False),
+                visit_date=visit_date,
+                logical_history_id=self.history_id,
+            )
+            QMessageBox.information(self, "Успех", "Дневник обновлен.")
+        else:
+            self.db.add_history(
+                self.patient_id,
+                "diary",
+                html_record,
+                "",
+                data.get("treatment", ""),
+                json.dumps(data, ensure_ascii=False),
+                history_id=self.history_id,
+                visit_date=visit_date,
+            )
+            QMessageBox.information(self, "Успех", "Дневник сохранен.")
         self.load_records_list(self.records_table, self.patient_id)
         parent = self.parent()
         while parent is not None and not hasattr(parent, "_nav_back"):
@@ -451,6 +471,7 @@ class DiaryWindow(QDialog):
                 "note": getattr(button, "_note", ""),
             }
         data = {
+            "date": self.date_edit.date().toString("dd.MM.yyyy"),
             "bp": self.bp_edit.text().strip(),
             "hr": self.hr_edit.text().strip(),
             "pulse": self.pulse_edit.text().strip(),
@@ -499,6 +520,11 @@ class DiaryWindow(QDialog):
         return None
 
     def _apply_state(self, data):
+        date_text = (data.get("date") or "").strip()
+        if date_text:
+            qdate = QDate.fromString(date_text, "dd.MM.yyyy")
+            if qdate.isValid():
+                self.date_edit.setDate(qdate)
         self.bp_edit.setText(data.get("bp", ""))
         self.hr_edit.setText(data.get("hr", ""))
         self.pulse_edit.setText(data.get("pulse", ""))
@@ -532,3 +558,25 @@ class DiaryWindow(QDialog):
             if selected or note:
                 has_basis = True
         self.basis_box.setVisible(has_basis)
+
+    def load_existing(self, history):
+        if not history:
+            return
+        try:
+            data = json.loads(history[7] or "")
+        except Exception:
+            data = None
+        if isinstance(data, dict):
+            if not data.get("date"):
+                try:
+                    data["date"] = QDate.fromString(history[2][:10], "yyyy-MM-dd").toString("dd.MM.yyyy")
+                except Exception:
+                    pass
+            self._apply_state(data)
+            return
+        try:
+            visit_qdate = QDate.fromString(history[2][:10], "yyyy-MM-dd")
+            if visit_qdate.isValid():
+                self.date_edit.setDate(visit_qdate)
+        except Exception:
+            pass
