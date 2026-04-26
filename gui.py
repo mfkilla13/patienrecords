@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QDateEdit
 )
 from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QAction, QFont, QTextDocument, QColor, QDesktopServices
+from PySide6.QtGui import QAction, QFont, QTextDocument, QColor, QBrush, QDesktopServices
 from PySide6.QtCore import QUrl
 from database import Database
 from windows.stationary_card import StationaryCardPage
@@ -32,6 +32,7 @@ class SortableTableWidgetItem(QTableWidgetItem):
         if left is not None and right is not None:
             return left < right
         return super().__lt__(other)
+
 
 class MedicalApp(QMainWindow):
     def __init__(self):
@@ -162,6 +163,39 @@ class MedicalApp(QMainWindow):
         census_layout.addWidget(self.inpatient_caption_label)
         census_box.setFixedWidth(86)
 
+        self.discharged_month_count_label = QLabel("0")
+        self.discharged_month_count_label.setAlignment(Qt.AlignCenter)
+        self.discharged_month_count_label.setStyleSheet("""
+            font-size: 12pt;
+            font-weight: 700;
+            color: #1f1f1f;
+            padding: 0;
+            background-color: #f1c40f;
+        """)
+        self.discharged_month_caption_label = QLabel("Выписано за " + datetime.now().strftime("%m.%y"))
+        self.discharged_month_caption_label.setAlignment(Qt.AlignCenter)
+        self.discharged_month_caption_label.setStyleSheet("""
+            font-size: 6pt;
+            font-weight: 400;
+            color: #4a4a4a;
+            padding: 0;
+        """)
+        discharged_month_box = QFrame()
+        discharged_month_box.setStyleSheet("""
+            QFrame {
+                background-color: #ffffff;
+                border: 1px solid #cfcfcf;
+                border-radius: 6px;
+                padding: 1px 1px;
+            }
+        """)
+        discharged_month_layout = QVBoxLayout(discharged_month_box)
+        discharged_month_layout.setContentsMargins(8, 1, 8, 1)
+        discharged_month_layout.setSpacing(0)
+        discharged_month_layout.addWidget(self.discharged_month_count_label)
+        discharged_month_layout.addWidget(self.discharged_month_caption_label)
+        discharged_month_box.setFixedWidth(110)
+
         archive_filters = QHBoxLayout()
         archive_filters.addWidget(QLabel("Фильтр:"))
         archive_filters.addWidget(QLabel("Год выписки:"))
@@ -184,6 +218,7 @@ class MedicalApp(QMainWindow):
         archive_filters.addWidget(self.archive_reset_button)
         archive_filters.addStretch(1)
         archive_filters.addWidget(census_box)
+        archive_filters.addWidget(discharged_month_box)
         layout.addLayout(archive_filters)
 
         self.case_tabs = QTabWidget()
@@ -656,7 +691,9 @@ class MedicalApp(QMainWindow):
         item.setData(Qt.UserRole + 2, summary["card_number"])
         item.setData(Qt.UserRole + 3, summary["status"])
         if color is not None:
-            item.setBackground(color)
+            brush = QBrush(color)
+            item.setBackground(brush)
+            item.setData(Qt.BackgroundRole, brush)
         table.setItem(row, col, item)
 
     def _populate_case_table(self, table, cases):
@@ -702,11 +739,33 @@ class MedicalApp(QMainWindow):
         active_cases = [case for case in all_cases if (case[8] or "active") == "active"]
         open_cases = [case for case in all_cases if (case[8] or "active") != "archived"]
         archived_cases = self.db.get_cases("archived")
+        now = datetime.now()
+        discharged_this_month = 0
+        for case in all_cases:
+            discharge_date = (case[5] or "").strip()
+            if not discharge_date:
+                continue
+            date_obj = self._parse_case_date(discharge_date)
+            if date_obj and date_obj.year == now.year and date_obj.month == now.month:
+                discharged_this_month += 1
         self.inpatient_count_label.setText(str(len(active_cases)))
+        self.discharged_month_count_label.setText(str(discharged_this_month))
         archived_summaries = [self._get_case_summary(case) for case in archived_cases]
         self._refresh_archive_filters(archived_summaries)
         self._populate_case_table(self.tree, open_cases)
         self._populate_case_table(self.archive_tree, archived_cases)
+
+    def _parse_case_date(self, value):
+        value = (value or "").strip()
+        for fmt in ("%d.%m.%Y", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(value[:10], fmt)
+            except Exception:
+                pass
+        try:
+            return datetime.fromisoformat(value)
+        except Exception:
+            return None
 
     def filter_patients(self):
         self.load_patients()
