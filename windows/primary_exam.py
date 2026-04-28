@@ -24,7 +24,8 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QScrollArea,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QDate, Signal
+from PySide6.QtWidgets import QDateEdit
 from PySide6.QtGui import QShortcut, QKeySequence
 
 
@@ -363,6 +364,7 @@ class MultiSelectButton(QPushButton):
     Хранит выбранные значения + примечание.
     В тексте кнопки показывает краткое резюме.
     """
+    changed = Signal()
 
     def __init__(self, title, options, parent=None):
         super().__init__(parent)
@@ -386,6 +388,7 @@ class MultiSelectButton(QPushButton):
         if dlg.exec() == QDialog.Accepted:
             self._selected, self._note = dlg.get_result()
             self._refresh_text()
+            self.changed.emit()
 
     def _refresh_text(self):
         if not self._selected and not self._note:
@@ -504,11 +507,13 @@ class EnhancedMultiSelectButton(QPushButton):
 
 
 class PrimaryExamWindow(QDialog):
-    def __init__(self, parent, db, patient_id, records_table, load_records_list_callback, history_id=None):
+    def __init__(self, parent, db, patient_id, records_table, load_records_list_callback, history_id=None, edit_record_id=None):
         super().__init__(parent)
         self.db = db
         self.patient_id = patient_id
         self.history_id = history_id
+        self.edit_record_id = edit_record_id
+        self._edit_visit_date = None
         self.records_table = records_table
         self.load_records_list = load_records_list_callback
         self.setWindowTitle("Первичный осмотр")
@@ -518,6 +523,17 @@ class PrimaryExamWindow(QDialog):
 
     def create_widgets(self):
         main_layout = QVBoxLayout(self)
+
+        # Дата осмотра
+        date_row = QHBoxLayout()
+        date_row.addWidget(QLabel("Дата осмотра:"))
+        self.date_edit = QDateEdit(QDate.currentDate())
+        self.date_edit.setCalendarPopup(True)
+        self.date_edit.setDisplayFormat("dd.MM.yyyy")
+        self.date_edit.setFixedWidth(130)
+        date_row.addWidget(self.date_edit)
+        date_row.addStretch(1)
+        main_layout.addLayout(date_row)
 
         self.tab_widget = QTabWidget()
         main_layout.addWidget(self.tab_widget)
@@ -1543,6 +1559,242 @@ class PrimaryExamWindow(QDialog):
                 max_width = width
         combo.setFixedWidth(max_width + 30)  # extra for arrow and padding
 
+    def _get_state(self):
+        """Сериализовать состояние всех полей формы в словарь."""
+        local = {}
+        for label, widgets in self.local_status_fields.items():
+            if label == "Передняя камера":
+                (od_depth, od_fluid), (os_depth, os_fluid) = widgets
+                local[label] = {
+                    "od_depth": od_depth.currentText(),
+                    "od_fluid": od_fluid.currentText(),
+                    "os_depth": os_depth.currentText(),
+                    "os_fluid": os_fluid.currentText(),
+                }
+            else:
+                od_w, os_w = widgets
+                local[label] = {
+                    "od_selected": list(getattr(od_w, '_selected', [])),
+                    "od_note": getattr(od_w, '_note', ''),
+                    "os_selected": list(getattr(os_w, '_selected', [])),
+                    "os_note": getattr(os_w, '_note', ''),
+                }
+        treatment = {}
+        for cat, btn in self.treatment_basis_fields.items():
+            treatment[cat] = {"selected": list(btn._selected), "note": btn._note}
+        return {
+            "schema": "primary_exam_v1",
+            "visit_date": self.date_edit.date().toString("yyyy-MM-dd"),
+            "complaints": self.complaints_text.toPlainText(),
+            "disease_anamnesis": self.disease_anamnesis_text.toPlainText(),
+            "tb": self.tb_entry.text(),
+            "allergy_combo": self.allergy_combo.currentText(),
+            "allergy_text": self.allergy_text.text(),
+            "insurance": self.insurance_combo.currentText(),
+            "general_state": self.general_state_combo.currentText(),
+            "lymph_nodes": self.lymph_nodes_combo.currentText(),
+            "skin_state": self.skin_state_combo.currentText(),
+            "skin_color": self.skin_color_combo.currentText(),
+            "breathing": self.breathing_combo.currentText(),
+            "breathing_side": self.breathing_side_combo.currentText(),
+            "wheeze": self.wheeze_combo.currentText(),
+            "heart_tones": self.heart_tones_combo.currentText(),
+            "heart_rhythm": self.heart_rhythm_combo.currentText(),
+            "hr": self.hr_edit.text(),
+            "pulse": self.pulse_edit.text(),
+            "pulse_rhythm": self.pulse_rhythm_combo.currentText(),
+            "pulse_quality": self.pulse_quality_combo.currentText(),
+            "bp_sys": self.bp_sys_edit.text(),
+            "bp_dia": self.bp_dia_edit.text(),
+            "abdomen_size": self.abdomen_size_combo.currentText(),
+            "abdomen_state": self.abdomen_state_combo.currentText(),
+            "abdomen_pain": self.abdomen_pain_combo.currentText(),
+            "liver_position": self.liver_position_combo.currentText(),
+            "liver_edge": self.liver_edge_combo.currentText(),
+            "liver_consistency": self.liver_consistency_combo.currentText(),
+            "liver_pain": self.liver_pain_combo.currentText(),
+            "stool": self.stool_combo.currentText(),
+            "stool_form": self.stool_form_combo.currentText(),
+            "urination": self.urination_combo.currentText(),
+            "urination_pain": self.urination_pain_combo.currentText(),
+            "local": local,
+            "vis_od": self.vis_od.text(),
+            "vis_os": self.vis_os.text(),
+            "vis_correction_od": self.vis_correction_od.currentText(),
+            "vis_correction_os": self.vis_correction_os.currentText(),
+            "vis_od_corr": self.vis_od_corr.text(),
+            "vis_od_result": self.vis_od_result.text(),
+            "vis_os_corr": self.vis_os_corr.text(),
+            "vis_os_result": self.vis_os_result.text(),
+            "vgd_od": self.vgd_od.text(),
+            "vgd_os": self.vgd_os.text(),
+            "diag_type": self.diag_type_combo.currentText(),
+            "selected_diagnoses_od": list(self.selected_diagnoses_od),
+            "selected_diagnoses_os": list(self.selected_diagnoses_os),
+            "selected_diagnoses_ou": list(self.selected_diagnoses_ou),
+            "custom_diagnosis_od": self.custom_diagnosis_od,
+            "custom_diagnosis_os": self.custom_diagnosis_os,
+            "custom_diagnosis_ou": self.custom_diagnosis_ou,
+            "selected_comorbid_diagnoses": list(self.selected_comorbid_diagnoses),
+            "custom_comorbid_diagnosis": self.custom_comorbid_diagnosis,
+            "selected_examinations": list(self.selected_examinations),
+            "treatment": treatment,
+        }
+
+    def _apply_state(self, state):
+        """Восстановить состояние формы из словаря."""
+        def _set_combo(combo, value):
+            idx = combo.findText(value)
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+            elif combo.isEditable():
+                combo.setCurrentText(value)
+
+        # Дата
+        vd = state.get("visit_date", "")
+        if vd:
+            qd = QDate.fromString(vd, "yyyy-MM-dd")
+            if qd.isValid():
+                self.date_edit.setDate(qd)
+
+        self.complaints_text.setPlainText(state.get("complaints", ""))
+        self.disease_anamnesis_text.setPlainText(state.get("disease_anamnesis", ""))
+        self.tb_entry.setText(state.get("tb", ""))
+        _set_combo(self.allergy_combo, state.get("allergy_combo", "не отягощен"))
+        self.allergy_text.setText(state.get("allergy_text", ""))
+        _set_combo(self.insurance_combo, state.get("insurance", ""))
+        _set_combo(self.general_state_combo, state.get("general_state", ""))
+        _set_combo(self.lymph_nodes_combo, state.get("lymph_nodes", ""))
+        _set_combo(self.skin_state_combo, state.get("skin_state", ""))
+        _set_combo(self.skin_color_combo, state.get("skin_color", ""))
+        _set_combo(self.breathing_combo, state.get("breathing", ""))
+        _set_combo(self.breathing_side_combo, state.get("breathing_side", ""))
+        _set_combo(self.wheeze_combo, state.get("wheeze", ""))
+        _set_combo(self.heart_tones_combo, state.get("heart_tones", ""))
+        _set_combo(self.heart_rhythm_combo, state.get("heart_rhythm", ""))
+        self.hr_edit.setText(state.get("hr", ""))
+        self.pulse_edit.setText(state.get("pulse", ""))
+        _set_combo(self.pulse_rhythm_combo, state.get("pulse_rhythm", ""))
+        _set_combo(self.pulse_quality_combo, state.get("pulse_quality", ""))
+        self.bp_sys_edit.setText(state.get("bp_sys", ""))
+        self.bp_dia_edit.setText(state.get("bp_dia", ""))
+        _set_combo(self.abdomen_size_combo, state.get("abdomen_size", ""))
+        _set_combo(self.abdomen_state_combo, state.get("abdomen_state", ""))
+        _set_combo(self.abdomen_pain_combo, state.get("abdomen_pain", ""))
+        _set_combo(self.liver_position_combo, state.get("liver_position", ""))
+        _set_combo(self.liver_edge_combo, state.get("liver_edge", ""))
+        _set_combo(self.liver_consistency_combo, state.get("liver_consistency", ""))
+        _set_combo(self.liver_pain_combo, state.get("liver_pain", ""))
+        _set_combo(self.stool_combo, state.get("stool", ""))
+        _set_combo(self.stool_form_combo, state.get("stool_form", ""))
+        _set_combo(self.urination_combo, state.get("urination", ""))
+        _set_combo(self.urination_pain_combo, state.get("urination_pain", ""))
+        # Местный статус
+        local = state.get("local") or {}
+        for label, widgets in self.local_status_fields.items():
+            ldata = local.get(label)
+            if not ldata:
+                continue
+            if label == "Передняя камера":
+                (od_depth, od_fluid), (os_depth, os_fluid) = widgets
+                _set_combo(od_depth, ldata.get("od_depth", ""))
+                _set_combo(od_fluid, ldata.get("od_fluid", ""))
+                _set_combo(os_depth, ldata.get("os_depth", ""))
+                _set_combo(os_fluid, ldata.get("os_fluid", ""))
+            else:
+                od_w, os_w = widgets
+                if hasattr(od_w, '_selected'):
+                    od_w._selected = list(ldata.get("od_selected", []))
+                    od_w._note = ldata.get("od_note", "")
+                    od_w._refresh_text()
+                if hasattr(os_w, '_selected'):
+                    os_w._selected = list(ldata.get("os_selected", []))
+                    os_w._note = ldata.get("os_note", "")
+                    os_w._refresh_text()
+        # Vis/ВГД
+        self.vis_od.setText(state.get("vis_od", ""))
+        self.vis_os.setText(state.get("vis_os", ""))
+        _set_combo(self.vis_correction_od, state.get("vis_correction_od", "пусто"))
+        _set_combo(self.vis_correction_os, state.get("vis_correction_os", "пусто"))
+        self.vis_od_corr.setText(state.get("vis_od_corr", ""))
+        self.vis_od_result.setText(state.get("vis_od_result", ""))
+        self.vis_os_corr.setText(state.get("vis_os_corr", ""))
+        self.vis_os_result.setText(state.get("vis_os_result", ""))
+        self.vgd_od.setText(state.get("vgd_od", ""))
+        self.vgd_os.setText(state.get("vgd_os", ""))
+        # Диагноз
+        _set_combo(self.diag_type_combo, state.get("diag_type", "клинический"))
+        self.selected_diagnoses_od = list(state.get("selected_diagnoses_od") or [])
+        self.selected_diagnoses_os = list(state.get("selected_diagnoses_os") or [])
+        self.selected_diagnoses_ou = list(state.get("selected_diagnoses_ou") or [])
+        self.custom_diagnosis_od = state.get("custom_diagnosis_od", "")
+        self.custom_diagnosis_os = state.get("custom_diagnosis_os", "")
+        self.custom_diagnosis_ou = state.get("custom_diagnosis_ou", "")
+        self.selected_comorbid_diagnoses = list(state.get("selected_comorbid_diagnoses") or [])
+        self.custom_comorbid_diagnosis = state.get("custom_comorbid_diagnosis", "")
+        self.selected_examinations = list(state.get("selected_examinations") or [])
+        self.update_diag_labels()
+        self.update_comorbid_label()
+        self.update_exam_label()
+        # Обоснование лечения
+        treatment = state.get("treatment") or {}
+        for cat, btn in self.treatment_basis_fields.items():
+            tdata = treatment.get(cat)
+            if tdata:
+                btn._selected = list(tdata.get("selected") or [])
+                btn._note = tdata.get("note", "")
+                btn._refresh_text()
+
+    def load_existing(self, history):
+        """Загрузить данные из существующей записи."""
+        if not history:
+            return
+        # Восстановить дату из записи
+        try:
+            from datetime import date as _date
+            iso = (history[2] or "").split("T")[0]
+            qd = QDate.fromString(iso, "yyyy-MM-dd")
+            if qd.isValid():
+                self.date_edit.setDate(qd)
+        except Exception:
+            pass
+        try:
+            state = json.loads(history[7] or "")
+            if isinstance(state, dict) and state.get("schema") == "primary_exam_v1":
+                self._apply_state(state)
+                return
+        except Exception:
+            pass
+        # Фолбэк для старых записей без JSON-состояния:
+        # Извлекаем что можно из структурированных колонок и HTML
+        plain = ""
+        try:
+            from PySide6.QtGui import QTextDocument
+            doc = QTextDocument()
+            doc.setHtml(history[4] or "")
+            plain = doc.toPlainText()
+        except Exception:
+            plain = history[4] or ""
+        for line in plain.splitlines():
+            if line.strip().startswith("Жалобы:"):
+                self.complaints_text.setPlainText(line.split(":", 1)[1].strip())
+                break
+        # Диагнозы из колонок БД
+        diag_adm = (history[8] or "").strip()
+        diag_clin = (history[9] or "").strip()
+        diag_comorbid = (history[10] or "").strip()
+        main_diag = diag_clin or diag_adm
+        if main_diag:
+            self.custom_diagnosis_od = main_diag
+            self.update_diag_labels()
+        if diag_comorbid:
+            self.custom_comorbid_diagnosis = diag_comorbid
+            self.update_comorbid_label()
+        if diag_adm:
+            _idx = self.diag_type_combo.findText("предварительный")
+            if _idx >= 0:
+                self.diag_type_combo.setCurrentIndex(_idx)
+
     def save_primary_exam(self):
         comp = self.complaints_text.toPlainText().strip()
         dis_an = self.disease_anamnesis_text.toPlainText().strip()
@@ -1859,6 +2111,13 @@ class PrimaryExamWindow(QDialog):
         html_lines.append('<div style="margin-top:6mm; text-align:right;">Воловая А.А. __________________</div>')
 
         html_record = "".join(html_lines)
+        notes_json = json.dumps(self._get_state(), ensure_ascii=False)
+
+        # Дата из виджета
+        try:
+            visit_date = self.date_edit.date().toPython().isoformat()
+        except Exception:
+            visit_date = None
 
         # Сохраняем в зависимости от типа
         diag_adm = ""
@@ -1868,14 +2127,28 @@ class PrimaryExamWindow(QDialog):
         else:
             diag_clin = diag_text
 
-        self.db.add_history(self.patient_id, "primary_exam", html_record, 
-                            diagnosis=diag_text, 
-                            treatment=treat, 
-                            diag_admission=diag_adm,
-                            diag_clinical=diag_clin, 
-                            diag_comorbid=comorbid_text,
-                            history_id=self.history_id)
-        QMessageBox.information(self, "Успешно", "Первичный осмотр сохранён.")
+        if self.edit_record_id is not None:
+            self.db.update_history(
+                self.edit_record_id, "primary_exam", html_record,
+                diag_text, treat, notes_json,
+                visit_date=visit_date,
+                diag_admission=diag_adm,
+                diag_clinical=diag_clin,
+                diag_comorbid=comorbid_text,
+                logical_history_id=self.history_id,
+            )
+            QMessageBox.information(self, "Успешно", "Первичный осмотр обновлён.")
+        else:
+            self.db.add_history(self.patient_id, "primary_exam", html_record,
+                                diagnosis=diag_text,
+                                treatment=treat,
+                                notes=notes_json,
+                                diag_admission=diag_adm,
+                                diag_clinical=diag_clin,
+                                diag_comorbid=comorbid_text,
+                                history_id=self.history_id,
+                                visit_date=visit_date)
+            QMessageBox.information(self, "Успешно", "Первичный осмотр сохранён.")
         self.load_records_list(self.records_table, self.patient_id)
         self._close_window()
 

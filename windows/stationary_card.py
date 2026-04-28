@@ -1,14 +1,15 @@
 import html
 import json
 import uuid
-from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout, QStackedWidget, QLabel, QLineEdit, QPushButton, QTextEdit, QTabWidget, QWidget as QtWidget, QListWidget, QListWidgetItem, QMessageBox, QInputDialog, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QDialog, QComboBox
+from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout, QStackedWidget, QLabel, QLineEdit, QPushButton, QTextEdit, QTabWidget, QWidget as QtWidget, QListWidget, QListWidgetItem, QMessageBox, QInputDialog, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QDialog, QComboBox, QCheckBox
 from PySide6.QtCore import Qt, QMarginsF, QDate, QSizeF
 from PySide6.QtGui import QTextDocument, QPageLayout, QPageSize, QTextCursor, QTextCharFormat, QFont, QTextTableFormat, QTextBlockFormat
 from PySide6.QtPrintSupport import QPrintPreviewDialog, QPrinter
 from datetime import datetime
 from .add_record import AddRecordWindow
 from .edit_record import EditRecordWindow
-from .primary_exam import PrimaryExamWindow
+from .primary_exam import PrimaryExamWindow, MultiSelectButton
+from .config import LOCAL_ROWS_CONFIG
 from widgets.date_input import DateInput
 from widgets.time_input import TimeInput
 from .diary import render_diary_html, _diary_vis_html
@@ -115,16 +116,17 @@ def _record_print_content(record):
             pass
         return record[4] or "", None
     if record_type == "operation_protocol":
-        time_text = _format_record_time(record[2])
-        title = "Протокол операции"
-        if time_text:
-            title += f" {time_text}"
         return f"""
             <div class="protocol-entry">
-                <div class="protocol-title">{html.escape(title)}</div>
                 {record[4] or ""}
             </div>
         """, None
+
+    if record_type == "primary_exam":
+        content = record[4] or ""
+        if "Воловая А.А." not in content:
+            content += '<div style="margin-top:6mm; text-align:right;">Воловая А.А. __________________</div>'
+        return content, None
     return record[4] or "", None
 
 
@@ -153,12 +155,21 @@ def _load_discharge_payload(value):
     return {}
 
 
+def _strip_local_markers(text):
+    """Убрать служебные маркеры блока местного статуса из текста эпикриза."""
+    import re as _re_m
+    text = _re_m.sub(r'--- Местный статус при выписке ---\n?', '', text or '')
+    text = _re_m.sub(r'\n?--- Конец местного статуса ---\n?', '\n', text).strip()
+    return text
+
+
 DIAGNOSTIC_TYPES = [
     "Флюорография (ФГ)",
     "МРС",
     "ОАМ",
     "Сахар крови",
     "ОАК",
+    "ЭКГ",
     "Свободная форма",
 ]
 
@@ -222,6 +233,9 @@ def _diagnostic_results_text(name, payload_or_text):
             fields.get("note", "").strip(),
         ]
         return "\n".join(line for line in lines if line)
+
+    if diag_type == "ЭКГ":
+        return fields.get("results", "").strip()
 
     if diag_type == "ОАК":
         line1 = _join_nonempty([
@@ -443,7 +457,7 @@ class StationaryCardPage(QWidget):
         print_button.clicked.connect(self.print_record)
         button_layout.addWidget(print_button)
 
-        diary_print_button = QPushButton("Печать дневников")
+        diary_print_button = QPushButton("Печать записей")
         diary_print_button.clicked.connect(self.print_diaries)
         button_layout.addWidget(diary_print_button)
 
@@ -576,12 +590,35 @@ class StationaryCardPage(QWidget):
         if self.history_id is None:
             QMessageBox.warning(self, "Ошибка", "Не удалось определить историю болезни.")
             return
+        _primary_exam = self.db.get_history_record(self.patient_id, "primary_exam", self.history_id)
+        _complaints = _extract_after_label(_html_plain(_primary_exam[4]), "Жалобы") if _primary_exam else ""
+        _main_diag = (_primary_exam[9] or "").strip() if _primary_exam else ""
+        _comorbid_diag = (_primary_exam[10] or "").strip() if _primary_exam else ""
+        _primary_vis = {}
+        if _primary_exam:
+            try:
+                import json as _json
+                _pnotes = _json.loads(_primary_exam[7] or "")
+                if isinstance(_pnotes, dict):
+                    for _k in ("vis_od", "vis_os", "vis_correction_od", "vis_correction_os",
+                               "vis_od_corr", "vis_od_result", "vis_os_corr", "vis_os_result",
+                               "vgd_od", "vgd_os"):
+                        _primary_vis[_k] = _pnotes.get(_k, "")
+            except Exception:
+                pass
         dialog = DischargeDialog(
             self,
             self.clinical_diag_entry.text().strip(),
             self.outcome_text.toPlainText().strip(),
             self.admission_date_input.text().strip(),
             self.db.get_diagnostics(self.patient_id, self.history_id),
+            complaints=_complaints,
+            main_diagnosis=_main_diag,
+            comorbid_diagnosis=_comorbid_diag,
+            primary_vis=_primary_vis,
+            db=self.db,
+            patient_id=self.patient_id,
+            history_id=self.history_id,
         )
         if dialog.exec() != QDialog.Accepted:
             return
@@ -614,6 +651,25 @@ class StationaryCardPage(QWidget):
             "vis_os_result": data["vis_os_result"],
             "vgd_od": data["vgd_od"],
             "vgd_os": data["vgd_os"],
+            "vgd_od_max": data["vgd_od_max"],
+            "vgd_od_min": data["vgd_od_min"],
+            "vgd_os_max": data["vgd_os_max"],
+            "vgd_os_min": data["vgd_os_min"],
+            "elasto_od": data["elasto_od"],
+            "elasto_os": data["elasto_os"],
+            "tono_od_ro": data["tono_od_ro"],
+            "tono_od_c": data["tono_od_c"],
+            "tono_od_kb": data["tono_od_kb"],
+            "tono_od_f": data["tono_od_f"],
+            "tono_os_ro": data["tono_os_ro"],
+            "tono_os_c": data["tono_os_c"],
+            "tono_os_kb": data["tono_os_kb"],
+            "tono_os_f": data["tono_os_f"],
+            "treatment_summary": data["treatment_summary"],
+            "sig_dep_chief": data["sig_dep_chief"],
+            "sig_chief": data["sig_chief"],
+            "discharge_local": data["discharge_local"],
+            "local_status_text": data["local_status_text"],
         }
         self.db.discharge_case(
             self.history_id,
@@ -890,6 +946,23 @@ class StationaryCardPage(QWidget):
         while app_main is not None and not hasattr(app_main, 'nav_push'):
             app_main = app_main.parent()
 
+        if record_type == "primary_exam":
+            dialog = PrimaryExamWindow(
+                app_main or self,
+                self.db,
+                self.patient_id,
+                self.records_table,
+                self.load_histories_list,
+                history_id=self.history_id,
+                edit_record_id=record_id,
+            )
+            dialog.load_existing(history)
+            if app_main is not None:
+                app_main.nav_push(dialog)
+            else:
+                dialog.show()
+            return
+
         if record_type == "diary":
             from .diary import DiaryWindow
             dialog = DiaryWindow(
@@ -928,12 +1001,35 @@ class StationaryCardPage(QWidget):
 
         if record_type == "discharge_summary":
             case = self.db.get_case_by_id(self.history_id) if self.history_id is not None else None
+            _primary_exam = self.db.get_history_record(self.patient_id, "primary_exam", self.history_id)
+            _complaints = _extract_after_label(_html_plain(_primary_exam[4]), "Жалобы") if _primary_exam else ""
+            _main_diag = (_primary_exam[9] or "").strip() if _primary_exam else ""
+            _comorbid_diag = (_primary_exam[10] or "").strip() if _primary_exam else ""
+            _primary_vis = {}
+            if _primary_exam:
+                try:
+                    import json as _json
+                    _pnotes = _json.loads(_primary_exam[7] or "")
+                    if isinstance(_pnotes, dict):
+                        for _k in ("vis_od", "vis_os", "vis_correction_od", "vis_correction_os",
+                                   "vis_od_corr", "vis_od_result", "vis_os_corr", "vis_os_result",
+                                   "vgd_od", "vgd_os"):
+                            _primary_vis[_k] = _pnotes.get(_k, "")
+                except Exception:
+                    pass
             dialog = DischargeDialog(
                 self,
                 (case[9] if case else "") or history[5],
                 (case[7] if case else ""),
                 self.admission_date_input.text().strip(),
                 self.db.get_diagnostics(self.patient_id, self.history_id),
+                complaints=_complaints,
+                main_diagnosis=_main_diag,
+                comorbid_diagnosis=_comorbid_diag,
+                primary_vis=_primary_vis,
+                db=self.db,
+                patient_id=self.patient_id,
+                history_id=self.history_id,
             )
             dialog.load_existing(history, case=case)
             if dialog.exec() != QDialog.Accepted:
@@ -967,6 +1063,25 @@ class StationaryCardPage(QWidget):
                 "vis_os_result": data["vis_os_result"],
                 "vgd_od": data["vgd_od"],
                 "vgd_os": data["vgd_os"],
+                "vgd_od_max": data["vgd_od_max"],
+                "vgd_od_min": data["vgd_od_min"],
+                "vgd_os_max": data["vgd_os_max"],
+                "vgd_os_min": data["vgd_os_min"],
+                "elasto_od": data["elasto_od"],
+                "elasto_os": data["elasto_os"],
+                "tono_od_ro": data["tono_od_ro"],
+                "tono_od_c": data["tono_od_c"],
+                "tono_od_kb": data["tono_od_kb"],
+                "tono_od_f": data["tono_od_f"],
+                "tono_os_ro": data["tono_os_ro"],
+                "tono_os_c": data["tono_os_c"],
+                "tono_os_kb": data["tono_os_kb"],
+                "tono_os_f": data["tono_os_f"],
+                "treatment_summary": data["treatment_summary"],
+                "sig_dep_chief": data["sig_dep_chief"],
+                "sig_chief": data["sig_chief"],
+                "discharge_local": data["discharge_local"],
+                "local_status_text": data["local_status_text"],
             }
             self.db.discharge_case(
                 self.history_id,
@@ -1081,7 +1196,7 @@ class StationaryCardPage(QWidget):
         
         # Создаем принтер и диалог предварительного просмотра
         printer = QPrinter(QPrinter.HighResolution)
-        printer.setPageMargins(QMarginsF(5, 5, 5, 7), QPageLayout.Millimeter)
+        printer.setPageMargins(QMarginsF(3, 3, 3, 3), QPageLayout.Millimeter)
         
         preview = QPrintPreviewDialog(printer, self)
         preview.setWindowTitle("Предварительный просмотр")
@@ -1175,11 +1290,74 @@ class StationaryCardPage(QWidget):
         final_diagnosis = case[9] if case and case[9] else history[5]
         payload = _load_discharge_payload(history[7] if history else "")
         epicrisis = case[10] if case and case[10] else payload.get("epicrisis") or _extract_after_label(_html_plain(history[4]), "Эпикриз") or _extract_after_label(_html_plain(history[4]), "Выписной эпикриз")
-        recommendations = case[11] if case and case[11] else payload.get("recommendations") or history[6] or history[7]
+        recommendations = case[11] if case and case[11] else payload.get("recommendations") or history[6] or ""
         plain = _html_plain(history[4])
         destination = _extract_after_label(plain, "Куда направляется выписка")
         workplace = _extract_after_label(plain, "Место работы и род занятий")
+        # Vis/ВГД "При выписке" — из discharge payload
         discharge_vis_html = _diary_vis_html(payload)
+        # Vis/ВГД "При поступлении" — из primary exam notes
+        admission_vis_html = ""
+        try:
+            _pe = self.db.get_history_record(self.patient_id, "primary_exam", self.history_id)
+            if _pe:
+                import json as _json
+                _pnotes = _json.loads(_pe[7] or "")
+                if isinstance(_pnotes, dict):
+                    admission_vis_html = _diary_vis_html(_pnotes)
+        except Exception:
+            pass
+
+        # Дополнительные офтальмологические данные (только если заполнены)
+        extra_oph_lines = []
+        vgd_od_max = (payload.get("vgd_od_max") or "").strip()
+        vgd_od_min = (payload.get("vgd_od_min") or "").strip()
+        vgd_os_max = (payload.get("vgd_os_max") or "").strip()
+        vgd_os_min = (payload.get("vgd_os_min") or "").strip()
+        if any([vgd_od_max, vgd_od_min, vgd_os_max, vgd_os_min]):
+            extra_oph_lines.append(
+                f'''<table border="0" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin:0;"><tr>
+                <td style="vertical-align:middle; padding-right:6px; white-space:nowrap;"><b>ВГД</b></td>
+                <td style="vertical-align:top;">
+                    <div>OD &nbsp; max {vgd_od_max or '—'} &nbsp; min {vgd_od_min or '—'} &nbsp; мм.рт.ст.</div>
+                    <div>OS &nbsp; max {vgd_os_max or '—'} &nbsp; min {vgd_os_min or '—'} &nbsp; мм.рт.ст.</div>
+                </td>
+                </tr></table>'''
+            )
+        elasto_od = (payload.get("elasto_od") or "").strip()
+        elasto_os = (payload.get("elasto_os") or "").strip()
+        if elasto_od or elasto_os:
+            extra_oph_lines.append(
+                f'''<table border="0" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin:0;"><tr>
+                <td style="vertical-align:middle; padding-right:6px; white-space:nowrap;"><b>Эластотонометрия</b></td>
+                <td style="vertical-align:top;">
+                    <div>OD &nbsp; {elasto_od or '—'}</div>
+                    <div>OS &nbsp; {elasto_os or '—'}</div>
+                </td>
+                </tr></table>'''
+            )
+        tono_od = {k: (payload.get(f"tono_od_{k}") or "").strip() for k in ("ro", "c", "kb", "f")}
+        tono_os = {k: (payload.get(f"tono_os_{k}") or "").strip() for k in ("ro", "c", "kb", "f")}
+        if any(tono_od.values()) or any(tono_os.values()):
+            od_row = f"OD &nbsp; Ро {tono_od['ro'] or '—'} &nbsp; С {tono_od['c'] or '—'} &nbsp; КБ {tono_od['kb'] or '—'} &nbsp; F {tono_od['f'] or '—'}"
+            os_row = f"OS &nbsp; Ро {tono_os['ro'] or '—'} &nbsp; С {tono_os['c'] or '—'} &nbsp; КБ {tono_os['kb'] or '—'} &nbsp; F {tono_os['f'] or '—'}"
+            extra_oph_lines.append(
+                f'''<table border="0" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin:0;"><tr>
+                <td style="vertical-align:middle; padding-right:6px; white-space:nowrap;"><b>Тонография по Нестерову</b></td>
+                <td style="vertical-align:top;">
+                    <div>{od_row}</div>
+                    <div>{os_row}</div>
+                </td>
+                </tr></table>'''
+            )
+        extra_oph_html = "".join(f"<div style='margin-top:3px;'>{line}</div>" for line in extra_oph_lines)
+
+        # Лечение из payload (отредактированное пользователем)
+        _ts = (payload.get("treatment_summary") or "").strip()
+        treatment_summary_html = (
+            f"<div style='margin-top:3px;'><b>Лечение:</b> {html.escape(_ts)}</div>"
+            if _ts else ""
+        )
 
         stay_days = ""
         start = _parse_ru_date(admission_date)
@@ -1195,6 +1373,10 @@ class StationaryCardPage(QWidget):
         def block(label, value):
             text = esc(value).replace("\n", "<br>") or "&nbsp;"
             return f"<div class='block'><span class='label'>{label}</span> {text}</div>"
+
+        def block_newline(label, value):
+            text = esc(value).replace("\n", "<br>") or "&nbsp;"
+            return f"<div class='block'><span class='label'>{label}</span><div>{text}</div></div>"
 
         return f"""
         <html>
@@ -1281,17 +1463,21 @@ class StationaryCardPage(QWidget):
             {block("6. Полный диагноз (основное заболевание, сопутствующее осложнение)", final_diagnosis)}
             <div class="block">
                 <span class="label">7. Эпикриз</span>
-                {"<div class='vision-wrap'>" + discharge_vis_html + "</div>" if discharge_vis_html else ""}
+                <div>Находился/лась на стационарном лечении в офтальмологическом отделении</div>
+                {"<div><b>При поступлении:</b></div><div class='vision-wrap'>" + admission_vis_html + "</div>" if admission_vis_html else ""}
                 <div>{esc(epicrisis).replace("\n", "<br>") or "&nbsp;"}</div>
+                {extra_oph_html}
+                {treatment_summary_html}
+                {"<div style='margin-top:4px;'><b>При выписке:</b></div><div class='vision-wrap'>" + discharge_vis_html + "</div>" if discharge_vis_html else ""}
             </div>
-            {block("8. Рекомендации", recommendations)}
+            {block_newline("8. Рекомендации", recommendations)}
 
             <table width="100%" cellspacing="0" cellpadding="0" style="margin-top:18px; border-collapse:collapse;">
                 <tr>
                     <td width="30%" style="text-align:left; vertical-align:top; font-size:10pt; white-space:nowrap;">{esc(signature_date)}</td>
                     <td width="30%">&nbsp;</td>
                     <td width="40%" style="text-align:right; vertical-align:top; font-size:10pt; line-height:1.7; white-space:nowrap;">
-                        Зам. главного врача __________________<br>Зав. отделением ______________________
+                        {"Зам. главного врача __________________<br>" if payload.get("sig_dep_chief") else ""}{"Гл. врач __________________________<br>" if payload.get("sig_chief") else ""}Зав. отделением ______________________
                     </td>
                 </tr>
             </table>
@@ -1302,7 +1488,7 @@ class StationaryCardPage(QWidget):
     def _print_discharge_form(self, history):
         printer = QPrinter(QPrinter.HighResolution)
         printer.setPageSize(QPageSize(QPageSize.A4))
-        printer.setPageMargins(QMarginsF(10, 8, 10, 8), QPageLayout.Millimeter)
+        printer.setPageMargins(QMarginsF(3, 3, 3, 3), QPageLayout.Millimeter)
 
         preview = QPrintPreviewDialog(printer, self)
         preview.setWindowTitle("Предварительный просмотр выписки")
@@ -1536,7 +1722,7 @@ class DiaryPrintDialog(QDialog):
         self.db = db
         self.patient_id = patient_id
         self.case_id = case_id
-        self.setWindowTitle("Печать дневников и протоколов")
+        self.setWindowTitle("Печать записей")
         self.resize(560, 520)
         self.create_widgets()
         self.refresh_records()
@@ -1558,7 +1744,7 @@ class DiaryPrintDialog(QDialog):
         self.state_label.setWordWrap(True)
         layout.addWidget(self.state_label)
 
-        self.hint_label = QLabel("Галочками можно выбрать, какие дневники попадут в печать.")
+        self.hint_label = QLabel("Галочками можно выбрать, какие дневники, протоколы и первичные осмотры попадут в печать.")
         self.hint_label.setWordWrap(True)
         layout.addWidget(self.hint_label)
 
@@ -1586,7 +1772,7 @@ class DiaryPrintDialog(QDialog):
             printed_text = "новый"
             if record[12]:
                 printed_text = f"уже печатался {record[12][:10]}"
-            record_title = "Дневник" if record[3] == "diary" else "Протокол операции"
+            record_title = "Дневник" if record[3] == "diary" else "Протокол операции" if record[3] == "operation_protocol" else "Первичный осмотр"
             time_text = _format_record_time(record[2])
             time_suffix = f" {time_text}" if time_text and record[3] == "operation_protocol" else ""
             item = QListWidgetItem(f"{_format_diary_date(record[2])} {record_title}{time_suffix} - {printed_text}")
@@ -1655,10 +1841,10 @@ class DiaryPrintDialog(QDialog):
 
         printer = QPrinter(QPrinter.HighResolution)
         printer.setPageSize(QPageSize(QPageSize.A4))
-        printer.setPageMargins(QMarginsF(5, 5, 5, 7), QPageLayout.Millimeter)
+        printer.setPageMargins(QMarginsF(3, 3, 3, 3), QPageLayout.Millimeter)
 
         preview = QPrintPreviewDialog(printer, self)
-        preview.setWindowTitle("Предварительный просмотр дневников и протоколов")
+        preview.setWindowTitle("Предварительный просмотр записей")
 
         def handle_paint(printer):
             document = QTextDocument()
@@ -1700,11 +1886,12 @@ class DiaryPrintDialog(QDialog):
             grouped[date_key].append(record)
 
         blocks = []
+        prev_date = None
         for date_key in ordered_dates:
             day_records = sorted(
                 grouped[date_key],
                 key=lambda record: (
-                    0 if record[3] == "diary" else 1,
+                    0 if record[3] == "primary_exam" else 1 if record[3] == "diary" else 2,
                     record[2] or "",
                     record[0],
                 ),
@@ -1719,16 +1906,26 @@ class DiaryPrintDialog(QDialog):
                 else:
                     content = _make_invisible_print_html(content)
                 visibility_class = "visible" if is_visible else "invisible"
+                record_type = record[3]
+                if record_type == "primary_exam":
+                    date_label = f"<table border='0' cellpadding='0' cellspacing='0' width='100%'><tr><td width='25%'>Дата: {html.escape(date_key)}</td><td align='center'><b>Первичный осмотр</b></td><td width='25%'></td></tr></table>"
+                elif record_type == "operation_protocol":
+                    time_text = _format_record_time(record[2])
+                    date_with_time = f"Дата: {html.escape(date_key)}{' ' + time_text if time_text else ''}"
+                    date_label = f"<table border='0' cellpadding='0' cellspacing='0' width='100%'><tr><td width='25%' style='white-space:nowrap;'>{date_with_time}</td><td align='center'><b>Протокол операции</b></td><td width='25%'></td></tr></table>"
+                else:
+                    date_label = f"Дата: {html.escape(date_key)}"
                 child_blocks.append(f"""
+                    <div style="page-break-inside:avoid; break-inside:avoid;">
+                    <div class="diary-date {visibility_class}">{date_label}</div>
                     <div class="entry-item {visibility_class}">
                         {content}
                     </div>
+                    </div>
                 """)
 
-            header_class = "visible" if any_visible else "invisible"
             blocks.append(f"""
                 <div class="diary-entry">
-                    <div class="diary-date {header_class}">Дата: {html.escape(date_key)}</div>
                     {''.join(child_blocks)}
                 </div>
                 <br>
@@ -1837,15 +2034,29 @@ class DiagnosticSelectionDialog(QDialog):
 
 
 class DischargeDialog(QDialog):
-    def __init__(self, parent, final_diagnosis='', outcome='', admission_date='', diagnostics=None):
+    def __init__(self, parent, final_diagnosis='', outcome='', admission_date='', diagnostics=None, complaints=None, main_diagnosis=None, comorbid_diagnosis=None, primary_vis=None, db=None, patient_id=None, history_id=None):
         super().__init__(parent)
         self.setWindowTitle("Выписка пациента")
         self.setModal(True)
         self.admission_date = admission_date
         self.diagnostics = diagnostics or []
-        self.resize(600, 500)
-        layout = QVBoxLayout(self)
+        self.complaints = complaints or ""
+        self.main_diagnosis = main_diagnosis or ""
+        self.comorbid_diagnosis = comorbid_diagnosis or ""
+        self.primary_vis = primary_vis or {}
+        self.db = db
+        self.patient_id = patient_id
+        self.history_id = history_id
+        self.resize(820, 800)
+        from PySide6.QtWidgets import QTabWidget, QScrollArea
+        main_layout = QVBoxLayout(self)
 
+        self.tabs = QTabWidget()
+        main_layout.addWidget(self.tabs, 1)
+
+        # ── Вкладка 1: Общие данные ───────────────────────────────────────
+        tab1 = QWidget()
+        t1 = QVBoxLayout(tab1)
         date_row = QHBoxLayout()
         date_row.addWidget(QLabel(f"Дата поступления: {admission_date or 'не указана'}"))
         date_row.addWidget(QLabel("Дата выписки:"))
@@ -1857,37 +2068,51 @@ class DischargeDialog(QDialog):
         self.discharge_time = TimeInput()
         self.discharge_time.setText(datetime.now().strftime("%H:%M"))
         date_row.addWidget(self.discharge_time)
-        layout.addLayout(date_row)
-
+        date_row.addStretch(1)
+        t1.addLayout(date_row)
         self.stay_days_label = QLabel("")
-        layout.addWidget(self.stay_days_label)
+        t1.addWidget(self.stay_days_label)
         self._update_stay_days()
-
-        layout.addWidget(QLabel("Куда направляется выписка:"))
+        t1.addWidget(QLabel("Куда направляется выписка:"))
         self.destination = QLineEdit()
-        layout.addWidget(self.destination)
-
-        layout.addWidget(QLabel("Место работы и род занятий:"))
+        t1.addWidget(self.destination)
+        t1.addWidget(QLabel("Место работы и род занятий:"))
         self.workplace = QLineEdit()
-        layout.addWidget(self.workplace)
-
-        layout.addWidget(QLabel("Исход:"))
+        t1.addWidget(self.workplace)
+        t1.addWidget(QLabel("Исход:"))
         self.outcome_combo = QComboBox()
         self.outcome_combo.setEditable(True)
         self.outcome_combo.addItems(["улучшение", "без перемен", "ухудшение", "перевод", "смерть", "другое"])
         if outcome:
             self.outcome_combo.setCurrentText(outcome)
-        layout.addWidget(self.outcome_combo)
+        t1.addWidget(self.outcome_combo)
+        t1.addStretch(1)
+        self.tabs.addTab(tab1, "Общие данные")
 
-        layout.addWidget(QLabel("Заключительный диагноз:"))
+        # ── Вкладка 2: Диагноз ───────────────────────────────────────────
+        tab2 = QWidget()
+        t2 = QVBoxLayout(tab2)
+        t2.addWidget(QLabel("Заключительный диагноз:"))
         self.final_diagnosis = QTextEdit()
         self.final_diagnosis.setPlainText(final_diagnosis)
-        layout.addWidget(self.final_diagnosis)
+        t2.addWidget(self.final_diagnosis)
+        diag_buttons_row = QHBoxLayout()
+        _btn_main = QPushButton("Взять основной диагноз")
+        _btn_main.clicked.connect(self._insert_main_diagnosis)
+        diag_buttons_row.addWidget(_btn_main)
+        _btn_comorbid = QPushButton("Взять сопутствующий диагноз")
+        _btn_comorbid.clicked.connect(self._insert_comorbid_diagnosis)
+        diag_buttons_row.addWidget(_btn_comorbid)
+        diag_buttons_row.addStretch(1)
+        t2.addLayout(diag_buttons_row)
+        self.tabs.addTab(tab2, "Диагноз")
 
-        oph_box = QWidget()
-        oph_layout = QVBoxLayout(oph_box)
-        oph_layout.setContentsMargins(0, 0, 0, 0)
-        oph_layout.addWidget(QLabel("Офтальмологический статус"))
+        # ── Вкладка 3: Офт. статус ────────────────────────────────────────
+        tab3_scroll = QScrollArea()
+        tab3_scroll.setWidgetResizable(True)
+        tab3 = QWidget()
+        t3 = QVBoxLayout(tab3)
+        t3.addWidget(QLabel("<b>При выписке:</b>"))
         vis_row = QHBoxLayout()
         vis_row.addWidget(QLabel("<b>Vis</b>"))
         vis_grid = QGridLayout()
@@ -1900,48 +2125,185 @@ class DischargeDialog(QDialog):
         vis_row.addWidget(QLabel("<b>ВГД</b>"))
         vgd_grid = QGridLayout()
         vgd_grid.addWidget(QLabel("OD"), 0, 0)
-        self.vgd_od = QLineEdit()
-        self.vgd_od.setFixedWidth(90)
+        self.vgd_od = QLineEdit(); self.vgd_od.setFixedWidth(90)
         vgd_grid.addWidget(self.vgd_od, 0, 1)
         vgd_grid.addWidget(QLabel("OS"), 1, 0)
-        self.vgd_os = QLineEdit()
-        self.vgd_os.setFixedWidth(90)
+        self.vgd_os = QLineEdit(); self.vgd_os.setFixedWidth(90)
         vgd_grid.addWidget(self.vgd_os, 1, 1)
         vis_row.addLayout(vgd_grid)
         vis_row.addStretch(1)
-        oph_layout.addLayout(vis_row)
-        layout.addWidget(oph_box)
+        t3.addLayout(vis_row)
+        t3.addSpacing(10)
+        # ВГД max/min
+        vgd_mm_row = QHBoxLayout()
+        vgd_mm_row.addWidget(QLabel("<b>ВГД</b>"))
+        vgd_mm_grid = QGridLayout()
+        vgd_mm_grid.setHorizontalSpacing(6); vgd_mm_grid.setVerticalSpacing(4)
+        vgd_mm_grid.addWidget(QLabel("OD"), 0, 0); vgd_mm_grid.addWidget(QLabel("max"), 0, 1)
+        self.vgd_od_max = QLineEdit(); self.vgd_od_max.setFixedWidth(70)
+        vgd_mm_grid.addWidget(self.vgd_od_max, 0, 2); vgd_mm_grid.addWidget(QLabel("min"), 0, 3)
+        self.vgd_od_min = QLineEdit(); self.vgd_od_min.setFixedWidth(70)
+        vgd_mm_grid.addWidget(self.vgd_od_min, 0, 4); vgd_mm_grid.addWidget(QLabel("мм. рт. ст."), 0, 5)
+        vgd_mm_grid.addWidget(QLabel("OS"), 1, 0); vgd_mm_grid.addWidget(QLabel("max"), 1, 1)
+        self.vgd_os_max = QLineEdit(); self.vgd_os_max.setFixedWidth(70)
+        vgd_mm_grid.addWidget(self.vgd_os_max, 1, 2); vgd_mm_grid.addWidget(QLabel("min"), 1, 3)
+        self.vgd_os_min = QLineEdit(); self.vgd_os_min.setFixedWidth(70)
+        vgd_mm_grid.addWidget(self.vgd_os_min, 1, 4); vgd_mm_grid.addWidget(QLabel("мм. рт. ст."), 1, 5)
+        vgd_mm_row.addLayout(vgd_mm_grid); vgd_mm_row.addStretch(1)
+        t3.addLayout(vgd_mm_row)
+        t3.addSpacing(10)
+        # Эластотонометрия
+        elasto_row = QHBoxLayout()
+        elasto_row.addWidget(QLabel("<b>Эластотонометрия</b>"))
+        elasto_grid = QGridLayout(); elasto_grid.setHorizontalSpacing(6); elasto_grid.setVerticalSpacing(4)
+        elasto_grid.addWidget(QLabel("OD"), 0, 0)
+        self.elasto_od = QLineEdit(); self.elasto_od.setFixedWidth(120)
+        elasto_grid.addWidget(self.elasto_od, 0, 1)
+        elasto_grid.addWidget(QLabel("OS"), 1, 0)
+        self.elasto_os = QLineEdit(); self.elasto_os.setFixedWidth(120)
+        elasto_grid.addWidget(self.elasto_os, 1, 1)
+        elasto_row.addLayout(elasto_grid); elasto_row.addStretch(1)
+        t3.addLayout(elasto_row)
+        t3.addSpacing(10)
+        # Тонография по Нестерову
+        tono_grid = QGridLayout(); tono_grid.setHorizontalSpacing(6); tono_grid.setVerticalSpacing(4)
+        tono_grid.addWidget(QLabel("<b>Тонография по Нестерову</b>"), 0, 0, 1, 9)
+        for col, lbl in enumerate(["Ро", "С", "КБ", "F"]):
+            tono_grid.addWidget(QLabel(lbl), 1, col * 2 + 1)
+        tono_grid.addWidget(QLabel("OD"), 2, 0)
+        self.tono_od_ro = QLineEdit(); self.tono_od_ro.setFixedWidth(55)
+        self.tono_od_c  = QLineEdit(); self.tono_od_c.setFixedWidth(55)
+        self.tono_od_kb = QLineEdit(); self.tono_od_kb.setFixedWidth(55)
+        self.tono_od_f  = QLineEdit(); self.tono_od_f.setFixedWidth(55)
+        for i, w in enumerate([self.tono_od_ro, self.tono_od_c, self.tono_od_kb, self.tono_od_f]):
+            tono_grid.addWidget(w, 2, i * 2 + 1)
+        tono_grid.addWidget(QLabel("OS"), 3, 0)
+        self.tono_os_ro = QLineEdit(); self.tono_os_ro.setFixedWidth(55)
+        self.tono_os_c  = QLineEdit(); self.tono_os_c.setFixedWidth(55)
+        self.tono_os_kb = QLineEdit(); self.tono_os_kb.setFixedWidth(55)
+        self.tono_os_f  = QLineEdit(); self.tono_os_f.setFixedWidth(55)
+        for i, w in enumerate([self.tono_os_ro, self.tono_os_c, self.tono_os_kb, self.tono_os_f]):
+            tono_grid.addWidget(w, 3, i * 2 + 1)
+        t3.addLayout(tono_grid)
+        t3.addStretch(1)
+        tab3_scroll.setWidget(tab3)
+        self.tabs.addTab(tab3_scroll, "Офт. статус")
 
-        layout.addWidget(QLabel("Эпикриз:"))
+        # ── Вкладка 4: Лечение ────────────────────────────────────────────
+        tab4 = QWidget()
+        t4 = QVBoxLayout(tab4)
+        t4.addWidget(QLabel("Лечение:"))
+        self.treatment_summary = QTextEdit()
+        self.treatment_summary.setPlaceholderText("Препараты через запятую (авто или вручную)")
+        t4.addWidget(self.treatment_summary)
+        self.tabs.addTab(tab4, "Лечение")
+
+        # ── Вкладка 5: Эпикриз ───────────────────────────────────────────
+        tab5_scroll = QScrollArea()
+        tab5_scroll.setWidgetResizable(True)
+        tab5 = QWidget()
+        t5 = QVBoxLayout(tab5)
+
+        # Местный статус при выписке
+        t5.addWidget(QLabel("<b>Местный статус при выписке:</b>"))
+        local_grid = QGridLayout()
+        local_grid.setHorizontalSpacing(8)
+        local_grid.setVerticalSpacing(4)
+        local_grid.addWidget(QLabel("<b>Позиция</b>"), 0, 0)
+        local_grid.addWidget(QLabel("<b>OD</b>"), 0, 1, Qt.AlignCenter)
+        local_grid.addWidget(QLabel("<b>OS</b>"), 0, 2, Qt.AlignCenter)
+        self.discharge_local_fields = {}
+        _row = 1
+        for _label, _opts in LOCAL_ROWS_CONFIG.items():
+            local_grid.addWidget(QLabel(_label), _row, 0)
+            if _opts is None and _label == "Передняя камера":
+                def _make_ac():
+                    w = QWidget()
+                    lay = QHBoxLayout(w); lay.setContentsMargins(0,0,0,0); lay.setSpacing(4)
+                    depth = QComboBox(); depth.setEditable(True)
+                    depth.addItems(["", "нормальная", "мелкая", "глубокая"]); depth.setFixedWidth(120)
+                    fluid = QComboBox(); fluid.setEditable(True)
+                    fluid.addItems(["", "прозрачная", "мутная", "гифема", "гипопион", "фибрин"]); fluid.setFixedWidth(140)
+                    lay.addWidget(QLabel("гл.")); lay.addWidget(depth)
+                    lay.addWidget(QLabel("вл.")); lay.addWidget(fluid); lay.addStretch()
+                    return w, depth, fluid
+                od_w, od_depth, od_fluid = _make_ac()
+                os_w, os_depth, os_fluid = _make_ac()
+                local_grid.addWidget(od_w, _row, 1)
+                local_grid.addWidget(os_w, _row, 2)
+                self.discharge_local_fields[_label] = ((od_depth, od_fluid), (os_depth, os_fluid))
+            else:
+                od_btn = MultiSelectButton(f"{_label} (OD)", _opts)
+                os_btn = MultiSelectButton(f"{_label} (OS)", _opts)
+                local_grid.addWidget(od_btn, _row, 1)
+                local_grid.addWidget(os_btn, _row, 2)
+                self.discharge_local_fields[_label] = (od_btn, os_btn)
+            _row += 1
+        t5.addLayout(local_grid)
+
+        t5.addWidget(QLabel("<b>Эпикриз:</b>"))
         self.epicrisis = QTextEdit()
-        layout.addWidget(self.epicrisis)
-
+        t5.addWidget(self.epicrisis)
         epicrisis_actions = QHBoxLayout()
         insert_diagnostics_button = QPushButton("Добавить исследования в эпикриз")
         insert_diagnostics_button.setStyleSheet("background-color: #f1c40f; color: #222;")
         insert_diagnostics_button.clicked.connect(self._insert_diagnostics_into_epicrisis)
         epicrisis_actions.addWidget(insert_diagnostics_button)
-        for label in ("OD", "OS", "OU"):
-            quick_button = QPushButton(label)
-            quick_button.setFixedWidth(44)
-            quick_button.clicked.connect(lambda _checked=False, text=label: self._insert_epicrisis_marker(text))
-            epicrisis_actions.addWidget(quick_button)
+        self._insert_complaints_button = QPushButton("Жалобы из осмотра")
+        self._insert_complaints_button.clicked.connect(self._insert_complaints_into_epicrisis)
+        epicrisis_actions.addWidget(self._insert_complaints_button)
+        self._insert_local_od_button = QPushButton("OD")
+        self._insert_local_od_button.setFixedWidth(44)
+        self._insert_local_od_button.clicked.connect(lambda: self._insert_local_status_into_epicrisis("OD"))
+        epicrisis_actions.addWidget(self._insert_local_od_button)
+        self._insert_local_os_button = QPushButton("OS")
+        self._insert_local_os_button.setFixedWidth(44)
+        self._insert_local_os_button.clicked.connect(lambda: self._insert_local_status_into_epicrisis("OS"))
+        epicrisis_actions.addWidget(self._insert_local_os_button)
+        self._insert_local_ou_button = QPushButton("OU")
+        self._insert_local_ou_button.setFixedWidth(44)
+        self._insert_local_ou_button.clicked.connect(lambda: self._insert_epicrisis_marker("OU"))
+        epicrisis_actions.addWidget(self._insert_local_ou_button)
         epicrisis_actions.addStretch(1)
-        layout.addLayout(epicrisis_actions)
+        t5.addLayout(epicrisis_actions)
+        tab5_scroll.setWidget(tab5)
+        self.tabs.addTab(tab5_scroll, "Эпикриз")
 
-        layout.addWidget(QLabel("Лечебные и трудовые рекомендации:"))
+        # ── Вкладка 6: Рекомендации ───────────────────────────────────────
+        tab6 = QWidget()
+        t6 = QVBoxLayout(tab6)
+        t6.addWidget(QLabel("Лечебные и трудовые рекомендации:"))
         self.recommendations = QTextEdit()
-        layout.addWidget(self.recommendations)
+        t6.addWidget(self.recommendations)
+        self.tabs.addTab(tab6, "Рекомендации")
+
+        # ── Нижняя панель (вне вкладок) ──────────────────────────────────
+        sig_row = QHBoxLayout()
+        sig_row.addWidget(QLabel("Подписи на печати:"))
+        self.sig_dep_chief = QCheckBox("Зам. гл. врача")
+        self.sig_chief = QCheckBox("Гл. врач")
+        sig_row.addWidget(self.sig_dep_chief)
+        sig_row.addWidget(self.sig_chief)
+        sig_row.addStretch(1)
+        main_layout.addLayout(sig_row)
 
         buttons = QHBoxLayout()
         buttons.addStretch(1)
         cancel = QPushButton("Отмена")
         cancel.clicked.connect(self.reject)
         buttons.addWidget(cancel)
-        ok = QPushButton("Сохранить выписку")
-        ok.clicked.connect(self.accept)
-        buttons.addWidget(ok)
-        layout.addLayout(buttons)
+        self.next_button = QPushButton("Далее")
+        self.next_button.clicked.connect(self._handle_next_or_save)
+        buttons.addWidget(self.next_button)
+        main_layout.addLayout(buttons)
+        self.tabs.currentChanged.connect(self._update_navigation_button)
+        self._update_navigation_button()
+
+        # Авто-заполнить лечение при создании новой выписки
+        if self.db and self.patient_id and self.history_id:
+            ts = self._collect_treatment_summary()
+            if ts:
+                self.treatment_summary.setPlainText(ts)
 
     def load_existing(self, history, case=None):
         payload = _load_discharge_payload(history[7] if history else "")
@@ -1971,7 +2333,44 @@ class DischargeDialog(QDialog):
         self.vis_os_result.setText(payload.get("vis_os_result", ""))
         self.vgd_od.setText(payload.get("vgd_od", ""))
         self.vgd_os.setText(payload.get("vgd_os", ""))
+        self.vgd_od_max.setText(payload.get("vgd_od_max", ""))
+        self.vgd_od_min.setText(payload.get("vgd_od_min", ""))
+        self.vgd_os_max.setText(payload.get("vgd_os_max", ""))
+        self.vgd_os_min.setText(payload.get("vgd_os_min", ""))
+        self.elasto_od.setText(payload.get("elasto_od", ""))
+        self.elasto_os.setText(payload.get("elasto_os", ""))
+        self.tono_od_ro.setText(payload.get("tono_od_ro", ""))
+        self.tono_od_c.setText(payload.get("tono_od_c", ""))
+        self.tono_od_kb.setText(payload.get("tono_od_kb", ""))
+        self.tono_od_f.setText(payload.get("tono_od_f", ""))
+        self.tono_os_ro.setText(payload.get("tono_os_ro", ""))
+        self.tono_os_c.setText(payload.get("tono_os_c", ""))
+        self.tono_os_kb.setText(payload.get("tono_os_kb", ""))
+        self.tono_os_f.setText(payload.get("tono_os_f", ""))
+        # Лечение: из payload или авто-собрать
+        _saved_ts = payload.get("treatment_summary", "")
+        if _saved_ts:
+            self.treatment_summary.setPlainText(_saved_ts)
+        else:
+            self.treatment_summary.setPlainText(self._collect_treatment_summary())
+        self.sig_dep_chief.setChecked(bool(payload.get("sig_dep_chief", False)))
+        self.sig_chief.setChecked(bool(payload.get("sig_chief", False)))
+        self._apply_discharge_local(payload.get("discharge_local") or {})
         self._update_stay_days()
+
+    def _update_navigation_button(self, *_args):
+        if self.tabs.currentIndex() >= self.tabs.count() - 1:
+            self.next_button.setText("Сохранить выписку")
+        else:
+            self.next_button.setText("Далее")
+
+    def _handle_next_or_save(self):
+        current_index = self.tabs.currentIndex()
+        last_index = self.tabs.count() - 1
+        if current_index >= last_index:
+            self.accept()
+            return
+        self.tabs.setCurrentIndex(current_index + 1)
 
     def _insert_diagnostics_into_epicrisis(self):
         if not self.diagnostics:
@@ -2005,12 +2404,50 @@ class DischargeDialog(QDialog):
         current = self.epicrisis.toPlainText().strip()
         self.epicrisis.setPlainText(f"{current}\n\n{block}".strip() if current else block)
 
+    def _insert_main_diagnosis(self):
+        if not self.main_diagnosis:
+            QMessageBox.information(self, "Диагноз", "Основной диагноз в первичном осмотре не указан.")
+            return
+        self.final_diagnosis.setPlainText(self.main_diagnosis)
+        self.final_diagnosis.setFocus()
+
+    def _insert_comorbid_diagnosis(self):
+        if not self.comorbid_diagnosis:
+            QMessageBox.information(self, "Диагноз", "Сопутствующий диагноз в первичном осмотре не указан.")
+            return
+        current = self.final_diagnosis.toPlainText().strip()
+        sep = "\n" if current else ""
+        self.final_diagnosis.setPlainText(f"{current}{sep}{self.comorbid_diagnosis}")
+        self.final_diagnosis.setFocus()
+
+    def _insert_complaints_into_epicrisis(self):
+        if not self.complaints:
+            QMessageBox.information(self, "Жалобы", "В первичном осмотре нет данных о жалобах.")
+            return
+        cursor = self.epicrisis.textCursor()
+        cursor.insertText(f"Со слов пациента жалобы {self.complaints}")
+        self.epicrisis.setTextCursor(cursor)
+        self.epicrisis.setFocus()
+
     def _insert_epicrisis_marker(self, marker):
         cursor = self.epicrisis.textCursor()
         prefix = ""
         if self.epicrisis.toPlainText() and not cursor.atBlockStart():
             prefix = "\n"
         cursor.insertText(f"{prefix}{marker}: ")
+        self.epicrisis.setTextCursor(cursor)
+        self.epicrisis.setFocus()
+
+    def _insert_local_status_into_epicrisis(self, eye):
+        line = self._build_local_status_line_for_eye(eye)
+        if not line:
+            QMessageBox.information(self, "Местный статус", f"Для {eye} в форме пока нет заполненных данных.")
+            return
+        cursor = self.epicrisis.textCursor()
+        prefix = ""
+        if self.epicrisis.toPlainText() and not cursor.atBlockStart():
+            prefix = "\n"
+        cursor.insertText(prefix + line)
         self.epicrisis.setTextCursor(cursor)
         self.epicrisis.setFocus()
 
@@ -2074,6 +2511,134 @@ class DischargeDialog(QDialog):
             return ""
         return str((end - start).days + 1)
 
+    def _get_discharge_local(self):
+        local = {}
+        for label, widgets in self.discharge_local_fields.items():
+            if label == "Передняя камера":
+                (od_depth, od_fluid), (os_depth, os_fluid) = widgets
+                local[label] = {
+                    "od_depth": od_depth.currentText(),
+                    "od_fluid": od_fluid.currentText(),
+                    "os_depth": os_depth.currentText(),
+                    "os_fluid": os_fluid.currentText(),
+                }
+            else:
+                od_btn, os_btn = widgets
+                local[label] = {
+                    "od_selected": list(getattr(od_btn, '_selected', [])),
+                    "od_note": getattr(od_btn, '_note', ''),
+                    "os_selected": list(getattr(os_btn, '_selected', [])),
+                    "os_note": getattr(os_btn, '_note', ''),
+                }
+        return local
+
+    def _apply_discharge_local(self, local):
+        if not local:
+            return
+        for label, widgets in self.discharge_local_fields.items():
+            data = local.get(label)
+            if not data:
+                continue
+            if label == "Передняя камера":
+                (od_depth, od_fluid), (os_depth, os_fluid) = widgets
+                od_depth.setCurrentText(data.get("od_depth", ""))
+                od_fluid.setCurrentText(data.get("od_fluid", ""))
+                os_depth.setCurrentText(data.get("os_depth", ""))
+                os_fluid.setCurrentText(data.get("os_fluid", ""))
+            else:
+                od_btn, os_btn = widgets
+                od_btn._selected = list(data.get("od_selected") or [])
+                od_btn._note = data.get("od_note", "")
+                od_btn._refresh_text()
+                os_btn._selected = list(data.get("os_selected") or [])
+                os_btn._note = data.get("os_note", "")
+                os_btn._refresh_text()
+
+    def _build_local_status_line_for_eye(self, eye):
+        eye_key = eye.lower()
+        parts = []
+        for label, widgets in self.discharge_local_fields.items():
+            if isinstance(widgets[0], tuple):  # Передняя камера
+                (od_depth, od_fluid), (os_depth, os_fluid) = widgets
+                if eye_key == "od":
+                    depth = od_depth.currentText().strip()
+                    fluid = od_fluid.currentText().strip()
+                else:
+                    depth = os_depth.currentText().strip()
+                    fluid = os_fluid.currentText().strip()
+                if depth or fluid:
+                    subparts = []
+                    if depth:
+                        subparts.append(f"глубина {depth}")
+                    if fluid:
+                        subparts.append(f"влага {fluid}")
+                    parts.append(f"{label} - {', '.join(subparts)}")
+            else:
+                od_btn, os_btn = widgets
+                text = (od_btn.get_text() if eye_key == "od" else os_btn.get_text()).strip()
+                if text:
+                    parts.append(f"{label} - {text}")
+        if not parts:
+            return ""
+        return f"{eye}: " + ", ".join(parts)
+
+    def _build_local_status_lines(self):
+        lines = []
+        od_line = self._build_local_status_line_for_eye("OD")
+        os_line = self._build_local_status_line_for_eye("OS")
+        if od_line:
+            lines.append(od_line)
+        if os_line:
+            lines.append(os_line)
+        return lines
+
+    def _collect_treatment_summary(self):
+        """Собрать список названий лекарств из первички и дневников."""
+        import re as _re
+        _TREAT_CATS = [
+            "angio_retino", "metabolism", "desensitization", "antibiotics",
+            "angioprotectors", "myotics", "biostimulators", "vasodilators",
+            "analgesics", "antiaggregants", "antifungal", "mydriatics",
+            "k_sparing", "anesthetics", "hypoglycemic", "hypotensive",
+            "diuretic", "antithrombotic",
+        ]
+        def _name_only(med):
+            m = _re.match(r'^([А-яA-Za-zёЁ][А-яA-Za-zёЁ-]*)', med.strip())
+            return m.group(1) if m else med.split()[0] if med.strip() else ""
+
+        def _extract(basis_dict, seen):
+            result = []
+            for cat in _TREAT_CATS:
+                for v in ((basis_dict or {}).get(cat) or {}).get("selected") or []:
+                    name = _name_only(str(v))
+                    if name and name not in seen:
+                        seen.add(name)
+                        result.append(name)
+            return result
+
+        meds, seen = [], set()
+        try:
+            _pe = self.db.get_history_record(self.patient_id, "primary_exam", self.history_id)
+            if _pe:
+                _pn = json.loads(_pe[7] or "")
+                if isinstance(_pn, dict):
+                    meds.extend(_extract(_pn.get("treatment") or {}, seen))
+        except Exception:
+            pass
+        try:
+            for _dr in self.db.get_diary_records_for_case(self.patient_id, self.history_id):
+                if _dr[3] != "diary":
+                    continue
+                try:
+                    _dn = json.loads(_dr[7] or "")
+                    if isinstance(_dn, dict):
+                        meds.extend(_extract(_dn.get("basis") or {}, seen))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return ", ".join(meds)
+
     def _update_stay_days(self):
         days = self._stay_days()
         if days:
@@ -2102,6 +2667,25 @@ class DischargeDialog(QDialog):
             "vis_os_result": self.vis_os_result.text().strip(),
             "vgd_od": self.vgd_od.text().strip(),
             "vgd_os": self.vgd_os.text().strip(),
+            "vgd_od_max": self.vgd_od_max.text().strip(),
+            "vgd_od_min": self.vgd_od_min.text().strip(),
+            "vgd_os_max": self.vgd_os_max.text().strip(),
+            "vgd_os_min": self.vgd_os_min.text().strip(),
+            "elasto_od": self.elasto_od.text().strip(),
+            "elasto_os": self.elasto_os.text().strip(),
+            "tono_od_ro": self.tono_od_ro.text().strip(),
+            "tono_od_c": self.tono_od_c.text().strip(),
+            "tono_od_kb": self.tono_od_kb.text().strip(),
+            "tono_od_f": self.tono_od_f.text().strip(),
+            "tono_os_ro": self.tono_os_ro.text().strip(),
+            "tono_os_c": self.tono_os_c.text().strip(),
+            "tono_os_kb": self.tono_os_kb.text().strip(),
+            "tono_os_f": self.tono_os_f.text().strip(),
+            "treatment_summary": self.treatment_summary.toPlainText().strip(),
+            "sig_dep_chief": self.sig_dep_chief.isChecked(),
+            "sig_chief": self.sig_chief.isChecked(),
+            "discharge_local": self._get_discharge_local(),
+            "local_status_text": "\n".join(self._build_local_status_lines()).strip(),
         }
 
 
@@ -2132,6 +2716,7 @@ class DiagnosticDialog(QDialog):
         self.form_stack.addWidget(self._build_oam_form())
         self.form_stack.addWidget(self._build_sugar_form())
         self.form_stack.addWidget(self._build_oak_form())
+        self.form_stack.addWidget(self._build_ekg_form())
         self.form_stack.addWidget(self._build_free_form())
         self.type_combo.currentIndexChanged.connect(self.form_stack.setCurrentIndex)
 
@@ -2226,6 +2811,11 @@ class DiagnosticDialog(QDialog):
         self._add_text(host, "oak_note", "Примечание:")
         return host
 
+    def _build_ekg_form(self):
+        host = self._make_form_host()
+        self._add_text(host, "ekg_results", "Результаты:", height=120)
+        return host
+
     def _build_free_form(self):
         host = self._make_form_host()
         self._add_line(host, "free_name", "Название:")
@@ -2301,6 +2891,9 @@ class DiagnosticDialog(QDialog):
                 "oak_color_index": "color_index",
                 "oak_note": "note",
             },
+            "ЭКГ": {
+                "ekg_results": "results",
+            },
         }
         if diag_type == "Свободная форма":
             self._set_widget_value("free_name", name or payload.get("name") or "")
@@ -2375,6 +2968,13 @@ class DiagnosticDialog(QDialog):
                 "color_index": self._widget_value("oak_color_index"),
                 "note": self._widget_value("oak_note"),
             }
+            return diag_type, {
+                "schema": "diagnostic_form_v1",
+                "type": diag_type,
+                "fields": fields,
+            }
+        if diag_type == "ЭКГ":
+            fields = {"results": self._widget_value("ekg_results")}
             return diag_type, {
                 "schema": "diagnostic_form_v1",
                 "type": diag_type,

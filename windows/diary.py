@@ -138,11 +138,17 @@ def _diary_treatment_basis_items(data):
 
 
 def render_diary_html(data):
-    left_parts = [
-        f"АД {_escape(data.get('bp'))} мм. рт. ст.<br>" if data.get("bp") else "",
-        f"ЧСС {_escape(data.get('hr'))} уд/мин<br>" if data.get("hr") else "",
-        f"Пульс {_escape(data.get('pulse'))} уд/мин<br>" if data.get("pulse") else "",
-    ]
+    left_lines = []
+    if data.get("bp"):
+        left_lines.append(f"АД {_escape(data.get('bp'))} мм. рт. ст.")
+    if data.get("hr"):
+        left_lines.append(f"ЧСС {_escape(data.get('hr'))} уд/мин")
+    if data.get("pulse"):
+        left_lines.append(f"Пульс {_escape(data.get('pulse'))} уд/мин")
+    # Заполнить до 3 строк пустыми
+    while len(left_lines) < 3:
+        left_lines.append("")
+    left = "<br>".join(left_lines)
     right_parts = [
         f"Общее состояние {_escape(data.get('general_state'))}<br>" if data.get("general_state") else "",
         f"Жалобы {_escape(data.get('complaints'))}<br>" if data.get("complaints") else "",
@@ -166,14 +172,14 @@ def render_diary_html(data):
             treatment_text = f"{treatment_text} {basis_text}"
         elif basis_text:
             treatment_text = basis_text
-        right_parts.append(f'<div>Лечение: {treatment_text}</div>')
+        right_parts.append(f'<div>Лечение {treatment_text}</div>')
 
     discharge_note = data.get("discharge_note") or ""
     if discharge_note.strip():
         right_parts.append(f'<div>{_escape(discharge_note.strip()).replace(chr(10), "<br>")}</div>')
 
     return render_template("diary.html", {
-        "left": "".join(left_parts),
+        "left": left,
         "right": "".join(right_parts),
     })
 

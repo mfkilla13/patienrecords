@@ -491,7 +491,7 @@ class Database:
              FROM histories
              WHERE patient_id = ?
                AND history_id = ?
-               AND record_type IN ('diary', 'operation_protocol')
+               AND record_type IN ('diary', 'operation_protocol', 'primary_exam')
                {printed_filter}
              ORDER BY visit_date ASC, id ASC
         ''', params)
