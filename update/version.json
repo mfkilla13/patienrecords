@@ -1,6 +1,6 @@
 {
-  "version": "2.9.1",
+  "version": "2.9.2",
   "package_type": "zip",
-  "download_url": "https://github.com/mfkilla13/patienrecords/releases/download/v2.9.1/MedQT-win.zip",
-  "notes": "Обновление печати первичного осмотра и дневников, правки редактирования первички, новый режим печати выбранных записей и расширение офтальмологических списков."
+  "download_url": "https://github.com/mfkilla13/patienrecords/releases/download/v2.9.2/MedQT-win.zip",
+  "notes": "Исправления печати первичного осмотра, унификация шрифтов, сохранение времени при редактировании первички и обновление офтальмологических списков."
 }

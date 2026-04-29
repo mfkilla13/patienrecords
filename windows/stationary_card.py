@@ -1940,10 +1940,11 @@ class DiaryPrintDialog(QDialog):
                     date_label = f"<table border='0' cellpadding='0' cellspacing='0' width='100%'><tr><td width='25%' style='white-space:nowrap;'>{date_with_time}</td><td align='center'><b>Протокол операции</b></td><td width='25%'></td></tr></table>"
                 else:
                     date_label = f"Дата: {html.escape(date_key)}"
+                record_class = "primary-record" if record_type == "primary_exam" else "standard-record"
                 child_blocks.append(f"""
                     <div style="page-break-inside:avoid; break-inside:avoid;">
-                    <div class="diary-date {visibility_class}">{date_label}</div>
-                    <div class="entry-item {visibility_class}">
+                    <div class="diary-date {record_class} {visibility_class}">{date_label}</div>
+                    <div class="entry-item {record_class} {visibility_class}">
                         {content}
                     </div>
                     </div>
@@ -1961,9 +1962,6 @@ class DiaryPrintDialog(QDialog):
         <head>
         <style>
             body {{
-                font-family: "Segoe UI", Arial, sans-serif;
-                font-size: 9pt;
-                line-height: 1.22;
                 margin: 0;
             }}
             .diary-entry {{
@@ -1999,9 +1997,27 @@ class DiaryPrintDialog(QDialog):
                 font-weight: bold;
                 margin-bottom: 1.5mm;
             }}
-            table {{
+            .standard-record {{
                 font-family: "Segoe UI", Arial, sans-serif;
                 font-size: 9pt;
+                line-height: 1.22;
+            }}
+            .standard-record table,
+            .standard-record th,
+            .standard-record td {{
+                font-family: "Segoe UI", Arial, sans-serif;
+                font-size: 9pt;
+            }}
+            .primary-record {{
+                font-family: "Segoe UI", Arial, sans-serif;
+                font-size: 10.5pt;
+                line-height: 1.05;
+            }}
+            .primary-record table,
+            .primary-record th,
+            .primary-record td {{
+                font-family: "Segoe UI", Arial, sans-serif;
+                font-size: 10.5pt;
             }}
         </style>
         </head>

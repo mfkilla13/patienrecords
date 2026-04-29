@@ -1,4 +1,4 @@
-APP_VERSION = "2.9.1"
+APP_VERSION = "2.9.2"
 
 
 def app_title():

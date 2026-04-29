@@ -1967,7 +1967,7 @@ class PrimaryExamWindow(QDialog):
                 <style>
                     body{
                         margin:0;
-                        font-family: Arial, sans-serif;
+                        font-family: "Segoe UI", Arial, sans-serif;
                         font-size: 10.5pt;
                         line-height: 1.05;
                     }
@@ -1982,11 +1982,11 @@ class PrimaryExamWindow(QDialog):
                     table{
                         margin:0.6mm 0;
                         border-collapse:collapse;
-                        font-family: Arial, sans-serif;
+                        font-family: "Segoe UI", Arial, sans-serif;
                         font-size: 10.5pt;
                     }
                     th, td{
-                        font-family: Arial, sans-serif;
+                        font-family: "Segoe UI", Arial, sans-serif;
                         font-size: 10.5pt;
                         padding: 1px 3px;
                         vertical-align: top;
