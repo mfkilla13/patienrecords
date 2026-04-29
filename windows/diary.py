@@ -86,6 +86,16 @@ def _diary_vis_html(data):
         os_corr = _diopter_text(data.get("vis_os_corr")) if os_has_corr else ""
         od_result = (data.get("vis_od_result") or "").strip() if od_has_corr else ""
         os_result = (data.get("vis_os_result") or "").strip() if os_has_corr else ""
+        status_section = ""
+        if od_status or os_status:
+            status_section = f"""
+                <td style="text-align:center; padding:0 8px; white-space:nowrap; min-width:70px;">
+                  <table border="0" cellpadding="1" cellspacing="0">
+                    <tr><td style="border-bottom:1px solid black; white-space:nowrap;">{_escape(od_status)}</td></tr>
+                    <tr><td style="white-space:nowrap;">{_escape(os_status)}</td></tr>
+                  </table>
+                </td>
+            """
         correction_section = ""
         if od_has_corr or os_has_corr:
             correction_section = f"""
@@ -106,8 +116,7 @@ def _diary_vis_html(data):
         vis_section = render_template("diary_vision_vis.html", {
             "vis_od": _escape(vis_od) or "—",
             "vis_os": _escape(vis_os) or "—",
-            "od_status": _escape(od_status),
-            "os_status": _escape(os_status),
+            "status_section": status_section,
             "correction_section": correction_section,
         })
 
@@ -224,8 +233,8 @@ class DiaryWindow(QDialog):
         common_grid.addWidget(QLabel("мм. рт. ст."), 0, 4)
 
         common_grid.addWidget(QLabel("ЧСС"), 1, 0)
-        self.hr_edit = QLineEdit("76")
-        self.hr_edit.setPlaceholderText("76")
+        self.hr_edit = QLineEdit("18")
+        self.hr_edit.setPlaceholderText("18")
         common_grid.addWidget(self.hr_edit, 1, 1)
         common_grid.addWidget(QLabel("уд/мин"), 1, 2)
 

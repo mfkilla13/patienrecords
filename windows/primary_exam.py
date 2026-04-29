@@ -23,8 +23,9 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QHeaderView,
     QScrollArea,
+    QTimeEdit,
 )
-from PySide6.QtCore import Qt, QDate, Signal
+from PySide6.QtCore import Qt, QDate, QTime, Signal
 from PySide6.QtWidgets import QDateEdit
 from PySide6.QtGui import QShortcut, QKeySequence
 
@@ -532,6 +533,11 @@ class PrimaryExamWindow(QDialog):
         self.date_edit.setDisplayFormat("dd.MM.yyyy")
         self.date_edit.setFixedWidth(130)
         date_row.addWidget(self.date_edit)
+        date_row.addWidget(QLabel("Время:"))
+        self.time_edit = QTimeEdit(QTime.currentTime())
+        self.time_edit.setDisplayFormat("HH:mm")
+        self.time_edit.setFixedWidth(90)
+        date_row.addWidget(self.time_edit)
         date_row.addStretch(1)
         main_layout.addLayout(date_row)
 
@@ -1585,6 +1591,7 @@ class PrimaryExamWindow(QDialog):
         return {
             "schema": "primary_exam_v1",
             "visit_date": self.date_edit.date().toString("yyyy-MM-dd"),
+            "visit_time": self.time_edit.time().toString("HH:mm"),
             "complaints": self.complaints_text.toPlainText(),
             "disease_anamnesis": self.disease_anamnesis_text.toPlainText(),
             "tb": self.tb_entry.text(),
@@ -1656,6 +1663,11 @@ class PrimaryExamWindow(QDialog):
             qd = QDate.fromString(vd, "yyyy-MM-dd")
             if qd.isValid():
                 self.date_edit.setDate(qd)
+        vt = state.get("visit_time", "")
+        if vt:
+            qt = QTime.fromString(vt, "HH:mm")
+            if qt.isValid():
+                self.time_edit.setTime(qt)
 
         self.complaints_text.setPlainText(state.get("complaints", ""))
         self.disease_anamnesis_text.setPlainText(state.get("disease_anamnesis", ""))
@@ -1751,11 +1763,16 @@ class PrimaryExamWindow(QDialog):
             return
         # Восстановить дату из записи
         try:
-            from datetime import date as _date
-            iso = (history[2] or "").split("T")[0]
+            raw_dt = history[2] or ""
+            iso = raw_dt.split("T")[0]
             qd = QDate.fromString(iso, "yyyy-MM-dd")
             if qd.isValid():
                 self.date_edit.setDate(qd)
+            if "T" in raw_dt:
+                time_part = raw_dt.split("T", 1)[1][:5]
+                qt = QTime.fromString(time_part, "HH:mm")
+                if qt.isValid():
+                    self.time_edit.setTime(qt)
         except Exception:
             pass
         try:
@@ -1962,8 +1979,15 @@ class PrimaryExamWindow(QDialog):
                     div{ margin:0; padding:0; }
 
                     /* Таблицы максимально плотные */
-                    table{ margin:0.6mm 0; border-collapse:collapse; }
+                    table{
+                        margin:0.6mm 0;
+                        border-collapse:collapse;
+                        font-family: Arial, sans-serif;
+                        font-size: 10.5pt;
+                    }
                     th, td{
+                        font-family: Arial, sans-serif;
+                        font-size: 10.5pt;
                         padding: 1px 3px;
                         vertical-align: top;
                         line-height: 1.05;
@@ -2115,7 +2139,7 @@ class PrimaryExamWindow(QDialog):
 
         # Дата из виджета
         try:
-            visit_date = self.date_edit.date().toPython().isoformat()
+            visit_date = f"{self.date_edit.date().toString('yyyy-MM-dd')}T{self.time_edit.time().toString('HH:mm')}:00"
         except Exception:
             visit_date = None
 

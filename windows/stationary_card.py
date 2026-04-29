@@ -1183,7 +1183,7 @@ class StationaryCardPage(QWidget):
             formatted_date = dt.strftime("%d.%m.%Y %H:%M")
             if record_type == "diary":
                 formatted_date_only = dt.strftime("%d.%m.%Y")
-            elif record_type == "operation_protocol":
+            elif record_type in ("operation_protocol", "primary_exam"):
                 formatted_date_only = dt.strftime("%d.%m.%Y %H:%M")
             else:
                 formatted_date_only = dt.strftime("%d.%m.%Y") + (" " + self.admission_time if self.admission_time else "")
@@ -1203,29 +1203,38 @@ class StationaryCardPage(QWidget):
         
         def handle_paint(printer):
             document = QTextDocument()
-            
-            # Явно задаем шрифт и стили для документа
-            document.setDefaultFont(QFont("Segoe UI", 9))
-            document.setDefaultStyleSheet("""
-                body { 
-                    font-family: 'Segoe UI', Arial, sans-serif; 
-                    font-size: 9pt; 
-                    line-height: 1.2;
-                }
-                table { 
-                    font-family: 'Segoe UI', Arial, sans-serif; 
-                    font-size: 9pt; 
-                }
-            """)
+
+            if record_type == "primary_exam":
+                document.setDefaultFont(QFont("Segoe UI", 10))
+            else:
+                # Явно задаем шрифт и стили для документа
+                document.setDefaultFont(QFont("Segoe UI", 9))
+                document.setDefaultStyleSheet("""
+                    body {
+                        font-family: 'Segoe UI', Arial, sans-serif;
+                        font-size: 9pt;
+                        line-height: 1.2;
+                    }
+                    table {
+                        font-family: 'Segoe UI', Arial, sans-serif;
+                        font-size: 9pt;
+                    }
+                """)
             
             cursor = QTextCursor(document)
             
             # Формат для шапки
             header_format = QTextCharFormat()
-            header_format.setFont(QFont("Segoe UI", 9))
+            if record_type == "primary_exam":
+                header_format.setFont(QFont("Segoe UI", 10))
+            else:
+                header_format.setFont(QFont("Segoe UI", 9))
             
             title_format = QTextCharFormat()
-            title_format.setFont(QFont("Segoe UI", 10, QFont.Bold))
+            if record_type == "primary_exam":
+                title_format.setFont(QFont("Segoe UI", 10, QFont.Bold))
+            else:
+                title_format.setFont(QFont("Segoe UI", 10, QFont.Bold))
             
             # Создаем таблицу для шапки: дата слева, заголовок по центру
             table = cursor.insertTable(1, 2)
@@ -1735,6 +1744,7 @@ class DiaryPrintDialog(QDialog):
         self.mode_combo = QComboBox()
         self.mode_combo.addItem("Печать новых", "new")
         self.mode_combo.addItem("Перепечатать выбранные", "reprint")
+        self.mode_combo.addItem("Печатать выбранные с нового листа", "selected_new_page")
         self.mode_combo.addItem("Печать всех", "all")
         self.mode_combo.currentIndexChanged.connect(self.refresh_records)
         mode_row.addWidget(self.mode_combo, 1)
@@ -1795,6 +1805,11 @@ class DiaryPrintDialog(QDialog):
                     f"Последняя печать записей: {last_print}. "
                     "Перепечатка не меняет отметки печати."
                 )
+            elif mode == "selected_new_page":
+                text = (
+                    f"Последняя печать записей: {last_print}. "
+                    "Выбранные записи будут собраны с начала нового листа."
+                )
             else:
                 text = (
                     f"Последняя печать записей: {last_print}. "
@@ -1807,6 +1822,10 @@ class DiaryPrintDialog(QDialog):
         if mode == "reprint":
             self.hint_label.setText(
                 "Выберите нужные записи галочками. Невыбранные останутся в разметке белым текстом."
+            )
+        elif mode == "selected_new_page":
+            self.hint_label.setText(
+                "Выберите нужные записи галочками. Они будут напечатаны с начала нового листа без скрытых пустых мест."
             )
         elif mode == "new":
             self.hint_label.setText(
@@ -1837,7 +1856,11 @@ class DiaryPrintDialog(QDialog):
             return
 
         visible_ids = {record[0] for record in visible_records}
-        html_content = self.build_print_html(all_records, visible_ids)
+        mode = self.mode_combo.currentData()
+        if mode == "selected_new_page":
+            html_content = self.build_print_html(visible_records, visible_ids)
+        else:
+            html_content = self.build_print_html(all_records, visible_ids)
 
         printer = QPrinter(QPrinter.HighResolution)
         printer.setPageSize(QPageSize(QPageSize.A4))
@@ -1855,7 +1878,7 @@ class DiaryPrintDialog(QDialog):
         preview.paintRequested.connect(handle_paint)
         preview.exec()
 
-        if self.mode_combo.currentData() == "reprint":
+        if self.mode_combo.currentData() in ("reprint", "selected_new_page"):
             return
 
         reply = QMessageBox.question(
@@ -1908,7 +1931,9 @@ class DiaryPrintDialog(QDialog):
                 visibility_class = "visible" if is_visible else "invisible"
                 record_type = record[3]
                 if record_type == "primary_exam":
-                    date_label = f"<table border='0' cellpadding='0' cellspacing='0' width='100%'><tr><td width='25%'>Дата: {html.escape(date_key)}</td><td align='center'><b>Первичный осмотр</b></td><td width='25%'></td></tr></table>"
+                    time_text = _format_record_time(record[2])
+                    date_with_time = f"Дата: {html.escape(date_key)}{' ' + time_text if time_text else ''}"
+                    date_label = f"<table border='0' cellpadding='0' cellspacing='0' width='100%'><tr><td width='25%' style='white-space:nowrap;'>{date_with_time}</td><td align='center'><b>Первичный осмотр</b></td><td width='25%'></td></tr></table>"
                 elif record_type == "operation_protocol":
                     time_text = _format_record_time(record[2])
                     date_with_time = f"Дата: {html.escape(date_key)}{' ' + time_text if time_text else ''}"
