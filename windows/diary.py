@@ -146,16 +146,19 @@ def _diary_treatment_basis_items(data):
     return items
 
 
-def render_diary_html(data):
+def render_diary_html(data, date_text=""):
     left_lines = []
+    if date_text:
+        left_lines.append(f"Дата: {_escape(date_text)}")
     if data.get("bp"):
         left_lines.append(f"АД {_escape(data.get('bp'))} мм. рт. ст.")
     if data.get("hr"):
         left_lines.append(f"ЧСС {_escape(data.get('hr'))} уд/мин")
     if data.get("pulse"):
         left_lines.append(f"Пульс {_escape(data.get('pulse'))} уд/мин")
-    # Заполнить до 3 строк пустыми
-    while len(left_lines) < 3:
+    # Заполнить до 4 строк пустыми, если встроена дата
+    min_lines = 4 if date_text else 3
+    while len(left_lines) < min_lines:
         left_lines.append("")
     left = "<br>".join(left_lines)
     right_parts = [

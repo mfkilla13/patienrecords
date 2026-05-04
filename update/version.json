@@ -1,6 +1,6 @@
 {
-  "version": "2.9.2",
+  "version": "2.9.3",
   "package_type": "zip",
-  "download_url": "https://github.com/mfkilla13/patienrecords/releases/download/v2.9.2/MedQT-win.zip",
-  "notes": "Исправления печати первичного осмотра, унификация шрифтов, сохранение времени при редактировании первички и обновление офтальмологических списков."
+  "download_url": "https://github.com/mfkilla13/patienrecords/releases/download/v2.9.3/MedQT-win.zip",
+  "notes": "Добавлен номер медкарты в историю болезни и выписку, доработана печать, статистика включена в Windows-сборку, а автообновление теперь не перезаписывает пользовательские JSON-справочники."
 }

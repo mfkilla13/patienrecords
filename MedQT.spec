@@ -1,12 +1,23 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+
+matplotlib_datas = collect_data_files('matplotlib')
+matplotlib_hiddenimports = collect_submodules('matplotlib')
 
 a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('data', 'data'), ('templates', 'templates'), ('widgets', 'widgets'), ('windows', 'windows')],
-    hiddenimports=[],
+    datas=[('data', 'data'), ('templates', 'templates'), ('widgets', 'widgets'), ('windows', 'windows')] + matplotlib_datas,
+    hiddenimports=matplotlib_hiddenimports + [
+        'matplotlib',
+        'matplotlib.pyplot',
+        'matplotlib.figure',
+        'matplotlib.dates',
+        'matplotlib.backends.backend_qtagg',
+        'matplotlib.backends.backend_qt5agg',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

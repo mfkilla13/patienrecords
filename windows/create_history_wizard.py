@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QButtonGroup,
     QComboBox,
@@ -403,6 +404,14 @@ class CreateHistoryWizard(QDialog):
         self.card_number_edit.setReadOnly(True)
         top_grid.addWidget(self.card_number_edit, 0, 1)
 
+        top_grid.addWidget(QLabel("Номер мед.карты"), 1, 0)
+        self.medical_record_number_edit = QLineEdit()
+        self.medical_record_number_edit.setMaxLength(6)
+        self.medical_record_number_edit.setPlaceholderText("до 6 цифр")
+        self.medical_record_number_edit.setValidator(QIntValidator(0, 999999, self))
+        self.medical_record_number_edit.setInputMask("999999;_")
+        top_grid.addWidget(self.medical_record_number_edit, 1, 1)
+
         top_grid.addWidget(QLabel("Поступил в приемное отделение"), 0, 2)
         date_wrap = QWidget()
         date_wrap_lay = QHBoxLayout(date_wrap)
@@ -431,13 +440,13 @@ class CreateHistoryWizard(QDialog):
         time_wrap_lay.addWidget(self.admission_time_now_btn)
         top_grid.addWidget(time_wrap, 0, 5)
 
-        top_grid.addWidget(QLabel("Диагноз при поступлении"), 1, 0)
+        top_grid.addWidget(QLabel("Диагноз при поступлении"), 2, 0)
         self.admission_diag_edit = QLineEdit()
-        top_grid.addWidget(self.admission_diag_edit, 1, 1, 1, 2)
+        top_grid.addWidget(self.admission_diag_edit, 2, 1, 1, 2)
 
-        top_grid.addWidget(QLabel("Клинический диагноз"), 1, 3)
+        top_grid.addWidget(QLabel("Клинический диагноз"), 2, 3)
         self.clinical_diag_edit = QLineEdit()
-        top_grid.addWidget(self.clinical_diag_edit, 1, 4, 1, 2)
+        top_grid.addWidget(self.clinical_diag_edit, 2, 4, 1, 2)
 
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs, 1)
@@ -514,6 +523,7 @@ class CreateHistoryWizard(QDialog):
 
         # Автозаполнение полей шага 2
         self.card_number_edit.setText(self._generate_history_number())
+        self.medical_record_number_edit.clear()
         self._set_admission_date_now()
         self._set_admission_time_now()
         # If patient has address components stored, prefill the fields directly
@@ -587,8 +597,10 @@ class CreateHistoryWizard(QDialog):
                 remember_address(city, street)
 
             # Сохраняем паспортную часть истории болезни
+            medical_record_number = self.medical_record_number_edit.text().replace("_", "").strip()
             passport_info = (
                 f"Номер карты: {self.card_number_edit.text().strip()}\n"
+                f"Номер мед.карты: {medical_record_number}\n"
                 f"Дата поступления: {self.admission_date_edit.text().strip()} {self.admission_time_edit.text().strip()}\n"
                 f"Диагноз при поступлении: {self.admission_diag_edit.text().strip()}\n"
                 f"Клинический диагноз: {self.clinical_diag_edit.text().strip()}\n"
@@ -603,6 +615,7 @@ class CreateHistoryWizard(QDialog):
                 self.admission_time_edit.text().strip(),
                 diag_clinical or diag_admission,
             )
+            self.db.set_case_medical_record_number(history_id_val, medical_record_number)
             
             self.db.add_history(self.patient_id, "passport", passport_info, 
                                 diagnosis=diag_admission, 

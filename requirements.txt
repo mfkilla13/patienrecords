@@ -1,4 +1,5 @@
 altgraph==0.17.5
+matplotlib==3.10.7
 Nuitka==4.0.4
 packaging==26.0
 pyinstaller==6.19.0

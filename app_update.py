@@ -117,7 +117,7 @@ if not errorlevel 1 (
 )
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -Path '%ZIP%' -DestinationPath '%EXTRACTDIR%' -Force"
-robocopy "%EXTRACTDIR%" "%APPDIR%" /E /R:1 /W:1 /XF patients.db *.db /XD backups >nul
+robocopy "%EXTRACTDIR%" "%APPDIR%" /E /R:1 /W:1 /XF patients.db *.db data\\*.json /XD backups >nul
 start "" "%APP_EXE%"
 endlocal
 """

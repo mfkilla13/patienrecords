@@ -111,7 +111,7 @@ def _record_print_content(record):
         try:
             diary_data = json.loads(record[7] or "")
             if isinstance(diary_data, dict):
-                return render_diary_html(diary_data), diary_data
+                return render_diary_html(diary_data, _format_diary_date(record[2])), diary_data
         except Exception:
             pass
         return record[4] or "", None
@@ -277,6 +277,7 @@ class StationaryCardPage(QWidget):
                 self.history_id = None
         if self.case:
             card_number = self.case[2]
+        self.medical_record_number = (self.case[14] if self.case and len(self.case) > 14 else "") or ""
         self.read_only = read_only or bool(self.case and self.case[8] == "archived")
         self.card_number = card_number
         # templates for appointments (shared within this window)
@@ -383,6 +384,15 @@ class StationaryCardPage(QWidget):
         # Tab 1: Паспортная часть
         passport_widget = QWidget()
         passport_layout = QVBoxLayout(passport_widget)
+
+        med_card_layout = QHBoxLayout()
+        med_card_layout.addWidget(QLabel("Номер мед.карты:"))
+        self.medical_record_number_input = QLineEdit(self.medical_record_number)
+        self.medical_record_number_input.setMaxLength(6)
+        self.medical_record_number_input.setPlaceholderText("до 6 цифр")
+        self.medical_record_number_input.setInputMask("999999;_")
+        med_card_layout.addWidget(self.medical_record_number_input)
+        passport_layout.addLayout(med_card_layout)
 
         date_layout = QHBoxLayout()
         date_layout.addWidget(QLabel("Дата поступления:"))
@@ -540,8 +550,10 @@ class StationaryCardPage(QWidget):
     def save_passport_info(self):
         # Build a passport section text and save as a history record
         card_number = getattr(self, 'card_number', '')
+        medical_record_number = self.medical_record_number_input.text().replace("_", "").strip()
         passport_info = (
             f"Номер карты: {card_number}\n"
+            f"Номер мед.карты: {medical_record_number}\n"
             f"Дата поступления: {self.admission_date_input.text().strip()} {self.admission_time_entry.text().strip()}\n"
             f"Диагноз при поступлении: {self.admission_diag_entry.text().strip()}\n"
             f"Клинический диагноз: {self.clinical_diag_entry.text().strip()}\n"
@@ -557,6 +569,8 @@ class StationaryCardPage(QWidget):
                 self.admission_time_entry.text().strip(),
                 diag_clinical or diag_admission,
             )
+            self.db.set_case_medical_record_number(self.history_id, medical_record_number)
+            self.medical_record_number = medical_record_number
         
         existing = self.db.get_history_record(self.patient_id, "passport", self.history_id)
         if existing:
@@ -1157,7 +1171,7 @@ class StationaryCardPage(QWidget):
             try:
                 diary_data = json.loads(history[7] or "")
                 if isinstance(diary_data, dict):
-                    html_content = render_diary_html(diary_data)
+                    html_content = render_diary_html(diary_data, formatted_date_only)
             except Exception:
                 pass
         title = ""
@@ -1196,7 +1210,7 @@ class StationaryCardPage(QWidget):
         
         # Создаем принтер и диалог предварительного просмотра
         printer = QPrinter(QPrinter.HighResolution)
-        printer.setPageMargins(QMarginsF(3, 3, 3, 3), QPageLayout.Millimeter)
+        printer.setPageMargins(QMarginsF(0, 0, 0, 0), QPageLayout.Millimeter)
         
         preview = QPrintPreviewDialog(printer, self)
         preview.setWindowTitle("Предварительный просмотр")
@@ -1205,7 +1219,9 @@ class StationaryCardPage(QWidget):
             document = QTextDocument()
 
             if record_type == "primary_exam":
-                document.setDefaultFont(QFont("Segoe UI", 10))
+                _font = QFont("Segoe UI")
+                _font.setPointSizeF(9.5)
+                document.setDefaultFont(_font)
             else:
                 # Явно задаем шрифт и стили для документа
                 document.setDefaultFont(QFont("Segoe UI", 9))
@@ -1226,35 +1242,41 @@ class StationaryCardPage(QWidget):
             # Формат для шапки
             header_format = QTextCharFormat()
             if record_type == "primary_exam":
-                header_format.setFont(QFont("Segoe UI", 10))
+                _header_font = QFont("Segoe UI")
+                _header_font.setPointSizeF(9.5)
+                header_format.setFont(_header_font)
             else:
                 header_format.setFont(QFont("Segoe UI", 9))
             
             title_format = QTextCharFormat()
             if record_type == "primary_exam":
-                title_format.setFont(QFont("Segoe UI", 10, QFont.Bold))
+                _title_font = QFont("Segoe UI")
+                _title_font.setBold(True)
+                _title_font.setPointSizeF(9.5)
+                title_format.setFont(_title_font)
             else:
                 title_format.setFont(QFont("Segoe UI", 10, QFont.Bold))
             
-            # Создаем таблицу для шапки: дата слева, заголовок по центру
-            table = cursor.insertTable(1, 2)
-            table_format = QTextTableFormat()
-            table_format.setBorder(0)
-            table.setFormat(table_format)
-            
-            # Левая ячейка: дата
-            cursor = table.cellAt(0, 0).firstCursorPosition()
-            cursor.insertText("Дата: " + formatted_date_only, header_format)
-            
-            # Правая ячейка: заголовок по центру
-            cursor = table.cellAt(0, 1).firstCursorPosition()
-            block_format = QTextBlockFormat()
-            block_format.setAlignment(Qt.AlignCenter)
-            cursor.setBlockFormat(block_format)
-            cursor.insertText(title, title_format)
-            
-            cursor.movePosition(QTextCursor.End)
-            cursor.insertText("\n\n")
+            if record_type != "diary":
+                # Создаем таблицу для шапки: дата слева, заголовок по центру
+                table = cursor.insertTable(1, 2)
+                table_format = QTextTableFormat()
+                table_format.setBorder(0)
+                table.setFormat(table_format)
+                
+                # Левая ячейка: дата
+                cursor = table.cellAt(0, 0).firstCursorPosition()
+                cursor.insertText("Дата: " + formatted_date_only, header_format)
+                
+                # Правая ячейка: заголовок по центру
+                cursor = table.cellAt(0, 1).firstCursorPosition()
+                block_format = QTextBlockFormat()
+                block_format.setAlignment(Qt.AlignCenter)
+                cursor.setBlockFormat(block_format)
+                cursor.insertText(title, title_format)
+                
+                cursor.movePosition(QTextCursor.End)
+                cursor.insertText("\n\n")
             
             # Основное содержимое
             cursor.insertHtml(html_content)
@@ -1293,6 +1315,7 @@ class StationaryCardPage(QWidget):
         patient_name = f"{self.patient[1]} {self.patient[2]} {self.patient[9] if len(self.patient) > 9 else ''}".strip()
         address = self._patient_address()
         dob = self._patient_dob()
+        medical_record_number = (case[14] if case and len(case) > 14 else "") or ""
 
         admission_date = case[3] if case and case[3] else self.admission_date_input.text().strip()
         discharge_date = case[5] if case and case[5] else _extract_after_label(_html_plain(history[4]), "Дата выписки")
@@ -1458,7 +1481,7 @@ class StationaryCardPage(QWidget):
                 </tr>
             </table>
 
-            <div class="title">ВЫПИСКА</div>
+            <div class="title">ВЫПИСКА{f" №{esc(medical_record_number)}" if medical_record_number else ""}</div>
             <div class="subtitle">из медицинской карты стационарного больного</div>
 
             {block("В", destination)}
@@ -1497,7 +1520,7 @@ class StationaryCardPage(QWidget):
     def _print_discharge_form(self, history):
         printer = QPrinter(QPrinter.HighResolution)
         printer.setPageSize(QPageSize(QPageSize.A4))
-        printer.setPageMargins(QMarginsF(3, 3, 3, 3), QPageLayout.Millimeter)
+        printer.setPageMargins(QMarginsF(0, 0, 0, 0), QPageLayout.Millimeter)
 
         preview = QPrintPreviewDialog(printer, self)
         preview.setWindowTitle("Предварительный просмотр выписки")
@@ -1864,7 +1887,7 @@ class DiaryPrintDialog(QDialog):
 
         printer = QPrinter(QPrinter.HighResolution)
         printer.setPageSize(QPageSize(QPageSize.A4))
-        printer.setPageMargins(QMarginsF(3, 3, 3, 3), QPageLayout.Millimeter)
+        printer.setPageMargins(QMarginsF(0, 0, 0, 0), QPageLayout.Millimeter)
 
         preview = QPrintPreviewDialog(printer, self)
         preview.setWindowTitle("Предварительный просмотр записей")
@@ -1939,7 +1962,7 @@ class DiaryPrintDialog(QDialog):
                     date_with_time = f"Дата: {html.escape(date_key)}{' ' + time_text if time_text else ''}"
                     date_label = f"<table border='0' cellpadding='0' cellspacing='0' width='100%'><tr><td width='25%' style='white-space:nowrap;'>{date_with_time}</td><td align='center'><b>Протокол операции</b></td><td width='25%'></td></tr></table>"
                 else:
-                    date_label = f"Дата: {html.escape(date_key)}"
+                    date_label = ""
                 record_class = "primary-record" if record_type == "primary_exam" else "standard-record"
                 child_blocks.append(f"""
                     <div style="page-break-inside:avoid; break-inside:avoid;">
@@ -2010,14 +2033,14 @@ class DiaryPrintDialog(QDialog):
             }}
             .primary-record {{
                 font-family: "Segoe UI", Arial, sans-serif;
-                font-size: 10.5pt;
+                font-size: 9.5pt;
                 line-height: 1.05;
             }}
             .primary-record table,
             .primary-record th,
             .primary-record td {{
                 font-family: "Segoe UI", Arial, sans-serif;
-                font-size: 10.5pt;
+                font-size: 9.5pt;
             }}
         </style>
         </head>

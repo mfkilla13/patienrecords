@@ -38,6 +38,13 @@ jobs:
             --add-data "templates:templates" `
             --add-data "widgets:widgets" `
             --add-data "windows:windows" `
+            --hidden-import "matplotlib" `
+            --hidden-import "matplotlib.pyplot" `
+            --hidden-import "matplotlib.figure" `
+            --hidden-import "matplotlib.dates" `
+            --hidden-import "matplotlib.backends.backend_qtagg" `
+            --hidden-import "matplotlib.backends.backend_qt5agg" `
+            --collect-all "matplotlib" `
             --distpath=dist `
             --workpath=build `
             --specpath=. `

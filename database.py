@@ -4,7 +4,7 @@ from datetime import datetime
 import sys
 
 class Database:
-    CURRENT_SCHEMA_VERSION = 3
+    CURRENT_SCHEMA_VERSION = 4
 
     def __init__(self, db_name='patients.db'):
         self.db_name = self._resolve_db_path(db_name)
@@ -70,6 +70,7 @@ class Database:
                 recommendations TEXT,
                 created_at TEXT,
                 closed_at TEXT,
+                medical_record_number TEXT DEFAULT "",
                 FOREIGN KEY (patient_id) REFERENCES patients (id)
             )
         ''')
@@ -220,6 +221,7 @@ class Database:
             ('recommendations', 'recommendations TEXT DEFAULT ""'),
             ('created_at', 'created_at TEXT'),
             ('closed_at', 'closed_at TEXT'),
+            ('medical_record_number', 'medical_record_number TEXT DEFAULT ""'),
         ])
 
     def _migrate_medical_cases(self):
@@ -288,19 +290,28 @@ class Database:
         cursor = self.conn.execute(
             '''INSERT INTO medical_cases (
                    patient_id, card_number, admission_date, admission_time,
-                   status, final_diagnosis, created_at
-               ) VALUES (?, ?, ?, ?, 'active', ?, ?)''',
-            (patient_id, card_number, admission_date, admission_time, final_diagnosis, created_at),
+                   status, final_diagnosis, created_at, medical_record_number
+               ) VALUES (?, ?, ?, ?, 'active', ?, ?, ?)''',
+            (patient_id, card_number, admission_date, admission_time, final_diagnosis, created_at, ''),
         )
         self.conn.commit()
         return cursor.lastrowid
+
+    def set_case_medical_record_number(self, case_id, medical_record_number=''):
+        self.conn.execute(
+            '''UPDATE medical_cases
+               SET medical_record_number = ?
+               WHERE id = ?''',
+            ((medical_record_number or '').strip(), case_id),
+        )
+        self.conn.commit()
 
     def get_case_by_id(self, case_id):
         cursor = self.conn.execute(
             '''SELECT id, patient_id, card_number, admission_date, admission_time,
                       discharge_date, discharge_time, outcome, status,
                       final_diagnosis, discharge_summary, recommendations,
-                      created_at, closed_at
+                      created_at, closed_at, medical_record_number
                FROM medical_cases WHERE id = ?''',
             (case_id,),
         )
@@ -315,9 +326,9 @@ class Database:
         cursor = self.conn.execute(
             f'''SELECT
                     c.id, c.patient_id, c.card_number, c.admission_date, c.admission_time,
-                    c.discharge_date, c.discharge_time, c.outcome, c.status,
-                    c.final_diagnosis, c.discharge_summary, c.recommendations,
-                    c.created_at, c.closed_at,
+                   c.discharge_date, c.discharge_time, c.outcome, c.status,
+                   c.final_diagnosis, c.discharge_summary, c.recommendations,
+                    c.created_at, c.closed_at, c.medical_record_number,
                     p.surname, p.name, p.dob, p.patronymic
                 FROM medical_cases c
                 JOIN patients p ON p.id = c.patient_id
@@ -602,6 +613,93 @@ class Database:
         cursor = self.conn.execute('SELECT COALESCE(MAX(id), 0) + 1 FROM medical_cases')
         row = cursor.fetchone()
         return int(row[0]) if row and row[0] is not None else 1
+
+    def get_admissions_by_period(self, date_from, date_to, period='month'):
+        """Получает количество госпитализаций по периодам"""
+        if period == 'year':
+            group_by = "strftime('%Y', created_at)"
+        elif period == 'month':
+            group_by = "strftime('%Y-%m', created_at)"
+        else:  # day
+            group_by = "date(created_at)"
+
+        query = f"""
+            SELECT {group_by} as period, COUNT(*) as count
+            FROM medical_cases
+            WHERE date(created_at) BETWEEN date(?) AND date(?)
+            GROUP BY period
+            ORDER BY period
+        """
+        cursor = self.conn.execute(query, (date_from, date_to))
+        return cursor.fetchall()
+
+    def get_discharges_by_period(self, date_from, date_to, period='month'):
+        """Получает количество выписок по периодам"""
+        if period == 'year':
+            group_by = "strftime('%Y', closed_at)"
+        elif period == 'month':
+            group_by = "strftime('%Y-%m', closed_at)"
+        else:  # day
+            group_by = "date(closed_at)"
+
+        query = f"""
+            SELECT {group_by} as period, COUNT(*) as count
+            FROM medical_cases
+            WHERE date(closed_at) BETWEEN date(?) AND date(?)
+            AND closed_at IS NOT NULL
+            GROUP BY period
+            ORDER BY period
+        """
+        cursor = self.conn.execute(query, (date_from, date_to))
+        return cursor.fetchall()
+
+    def get_avg_treatment_duration_by_period(self, date_from, date_to, period='month'):
+        """Получает среднюю длительность лечения по периодам"""
+        if period == 'year':
+            group_by = "strftime('%Y', created_at)"
+        elif period == 'month':
+            group_by = "strftime('%Y-%m', created_at)"
+        else:  # day
+            group_by = "date(created_at)"
+
+        query = f"""
+            SELECT {group_by} as period,
+                   AVG(julianday(closed_at) - julianday(created_at)) as avg_duration
+            FROM medical_cases
+            WHERE date(created_at) BETWEEN date(?) AND date(?)
+            AND closed_at IS NOT NULL
+            GROUP BY period
+            ORDER BY period
+        """
+        cursor = self.conn.execute(query, (date_from, date_to))
+        return cursor.fetchall()
+
+    def get_diagnosis_distribution(self, date_from, date_to):
+        """Получает распределение диагнозов"""
+        query = """
+            SELECT final_diagnosis, COUNT(*) as count
+            FROM medical_cases
+            WHERE date(created_at) BETWEEN date(?) AND date(?)
+            AND final_diagnosis IS NOT NULL AND final_diagnosis != ''
+            GROUP BY final_diagnosis
+            ORDER BY count DESC
+            LIMIT 20
+        """
+        cursor = self.conn.execute(query, (date_from, date_to))
+        return cursor.fetchall()
+
+    def get_outcome_distribution(self, date_from, date_to):
+        """Получает распределение исходов лечения"""
+        query = """
+            SELECT outcome, COUNT(*) as count
+            FROM medical_cases
+            WHERE date(closed_at) BETWEEN date(?) AND date(?)
+            AND outcome IS NOT NULL AND outcome != ''
+            GROUP BY outcome
+            ORDER BY count DESC
+        """
+        cursor = self.conn.execute(query, (date_from, date_to))
+        return cursor.fetchall()
 
     def close(self):
         self.conn.close()

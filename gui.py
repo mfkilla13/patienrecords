@@ -7,9 +7,10 @@ from PySide6.QtWidgets import (
     QLineEdit, QPushButton, QTreeWidget, QTreeWidgetItem, QHeaderView,
     QScrollArea, QTextEdit, QComboBox, QFrame, QMessageBox, QMenu,
     QSplitter, QTabWidget, QListWidget, QAbstractItemView, QDialog,
-    QTableWidget, QTableWidgetItem, QDateEdit
+    QTableWidget, QTableWidgetItem, QDateEdit, QDateEdit as QDateEditWidget,
+    QGroupBox, QRadioButton, QButtonGroup
 )
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt, Signal, QTimer, QDate
 from PySide6.QtGui import QAction, QFont, QTextDocument, QColor, QBrush, QDesktopServices
 from PySide6.QtCore import QUrl
 from database import Database
@@ -22,6 +23,35 @@ from PySide6.QtWidgets import QStackedWidget, QToolBar
 from address_book import get_cities, get_streets, remember_address
 from app_version import app_title
 from app_update import fetch_update_info, is_newer_version, can_auto_install_update, install_update
+
+# Для графиков
+try:
+    import matplotlib
+    matplotlib.use('QtAgg')  # Используем QtAgg бэкенд для Qt6
+    import matplotlib.pyplot as plt
+    try:
+        # Для Qt6 используем backend_qtagg
+        from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+        from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
+    except ImportError:
+        # Fallback для старых версий matplotlib
+        from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+        from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+    from matplotlib.figure import Figure
+    import matplotlib.dates as mdates
+    from matplotlib import rcParams
+    rcParams['font.family'] = 'DejaVu Sans'
+    
+    # Отключаем все предупреждения matplotlib
+    import warnings
+    warnings.filterwarnings("ignore")
+    matplotlib.set_loglevel('CRITICAL')
+    
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    MATPLOTLIB_AVAILABLE = False
+    FigureCanvas = None
+    NavigationToolbar = None
 
 SORT_ROLE = Qt.UserRole + 50
 
@@ -40,6 +70,13 @@ class MedicalApp(QMainWindow):
         self.db = Database()
         self.setWindowTitle(app_title())
         self.resize(1024, 768)
+        
+        # Переменные для пагинации архива (инициализируем до create_widgets)
+        self.archive_page_size = 25
+        self.archive_current_page = 1
+        self.archive_total_pages = 1
+        self.archive_filtered_cases = []
+        
         self.center_on_screen()
         self.create_widgets()
         self.load_patients()
@@ -66,7 +103,11 @@ class MedicalApp(QMainWindow):
         self.update_action = QAction("Проверить обновления", self)
         self.update_action.triggered.connect(lambda: self.check_for_updates(manual=True))
         toolbar.addAction(self.update_action)
+        self.stats_action = QAction("📊 Статистика", self)
+        self.stats_action.triggered.connect(self._open_statistics)
+        toolbar.addAction(self.stats_action)
         self._nav_stack = []
+        
         QTimer.singleShot(1500, lambda: self.check_for_updates(manual=False))
 
     def center_on_screen(self):
@@ -223,9 +264,12 @@ class MedicalApp(QMainWindow):
 
         self.case_tabs = QTabWidget()
         self.tree = self._create_case_table(archive=False)
-        self.archive_tree = self._create_case_table(archive=True)
+        
+        # Создаем контейнер для архива с пагинацией
+        self.archive_widget = self._create_archive_widget()
+        
         self.case_tabs.addTab(self.tree, "В отделении")
-        self.case_tabs.addTab(self.archive_tree, "Архив")
+        self.case_tabs.addTab(self.archive_widget, "Архив")
         self.case_tabs.setStyleSheet("""
             QTabBar::tab {
                 color: black;
@@ -286,7 +330,159 @@ class MedicalApp(QMainWindow):
         table.customContextMenuRequested.connect(self.show_context_menu)
         return table
 
-    # Navigation API
+    def _create_archive_widget(self):
+        """Создает виджет архива с пагинацией"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        # Таблица архива
+        self.archive_tree = self._create_case_table(archive=True)
+        layout.addWidget(self.archive_tree)
+        
+        # Панель пагинации
+        pagination_layout = QHBoxLayout()
+        
+        self.archive_prev_btn = QPushButton("◀ Предыдущая")
+        self.archive_prev_btn.clicked.connect(self._archive_prev_page)
+        self.archive_prev_btn.setEnabled(False)
+        pagination_layout.addWidget(self.archive_prev_btn)
+        
+        self.archive_page_label = QLabel("Страница 1 из 1")
+        self.archive_page_label.setAlignment(Qt.AlignCenter)
+        pagination_layout.addWidget(self.archive_page_label)
+        
+        self.archive_next_btn = QPushButton("Следующая ▶")
+        self.archive_next_btn.clicked.connect(self._archive_next_page)
+        self.archive_next_btn.setEnabled(False)
+        pagination_layout.addWidget(self.archive_next_btn)
+        
+        # Информация о записях
+        self.archive_info_label = QLabel("Записей: 0")
+        self.archive_info_label.setAlignment(Qt.AlignRight)
+        pagination_layout.addWidget(self.archive_info_label)
+        
+        layout.addLayout(pagination_layout)
+        
+        return widget
+
+    def _create_stats_widget(self):
+        """Создает виджет статистики с графиками"""
+        if not MATPLOTLIB_AVAILABLE:
+            # Если matplotlib не установлен, показываем сообщение
+            widget = QWidget()
+            layout = QVBoxLayout(widget)
+            layout.addWidget(QLabel("Для просмотра статистики необходимо установить matplotlib:\n"
+                                   "pip install matplotlib"))
+            return widget
+
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        # Панель управления
+        controls_layout = QHBoxLayout()
+
+        # Выбор периода
+        period_group = QGroupBox("Период")
+        period_layout = QVBoxLayout(period_group)
+
+        self.period_group = QButtonGroup()
+        self.period_day = QRadioButton("День")
+        self.period_month = QRadioButton("Месяц")
+        self.period_year = QRadioButton("Год")
+        self.period_day.setChecked(True)
+
+        self.period_group.addButton(self.period_day)
+        self.period_group.addButton(self.period_month)
+        self.period_group.addButton(self.period_year)
+
+        period_layout.addWidget(self.period_day)
+        period_layout.addWidget(self.period_month)
+        period_layout.addWidget(self.period_year)
+
+        controls_layout.addWidget(period_group)
+
+        # Выбор типа статистики
+        type_group = QGroupBox("Показатель")
+        type_layout = QVBoxLayout(type_group)
+
+        self.stats_type_combo = QComboBox()
+        self.stats_type_combo.addItems([
+            "Количество госпитализаций",
+            "Количество выписок",
+            "Средняя длительность лечения",
+            "Распределение диагнозов",
+            "Распределение исходов"
+        ])
+        type_layout.addWidget(self.stats_type_combo)
+
+        controls_layout.addWidget(type_group)
+
+        # Выбор дат
+        date_group = QGroupBox("Диапазон дат")
+        date_layout = QVBoxLayout(date_group)
+
+        # Пресеты месяцев
+        month_layout = QHBoxLayout()
+        month_layout.addWidget(QLabel("Месяц:"))
+        self.stats_month_combo = QComboBox()
+        self.stats_month_combo.addItem("Все период")
+        months = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", 
+                 "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
+        self.stats_month_combo.addItems(months)
+        self.stats_month_combo.currentTextChanged.connect(self._on_month_preset_changed)
+        month_layout.addWidget(self.stats_month_combo)
+        month_layout.addStretch()
+        date_layout.addLayout(month_layout)
+
+        # Ручной выбор дат
+        manual_layout = QHBoxLayout()
+        manual_layout.addWidget(QLabel("От:"))
+        self.stats_date_from = QDateEditWidget()
+        self.stats_date_from.setDate(QDate.currentDate().addYears(-1))
+        self.stats_date_from.setCalendarPopup(True)
+        manual_layout.addWidget(self.stats_date_from)
+
+        manual_layout.addWidget(QLabel("До:"))
+        self.stats_date_to = QDateEditWidget()
+        self.stats_date_to.setDate(QDate.currentDate())
+        self.stats_date_to.setCalendarPopup(True)
+        manual_layout.addWidget(self.stats_date_to)
+        date_layout.addLayout(manual_layout)
+
+        controls_layout.addWidget(date_group)
+
+        # Кнопка обновления
+        self.update_stats_btn = QPushButton("Обновить график")
+        self.update_stats_btn.clicked.connect(self.update_statistics)
+        controls_layout.addWidget(self.update_stats_btn)
+
+        # Подключаем автоматическое обновление при изменении параметров
+        self.period_year.toggled.connect(self.update_statistics)
+        self.period_month.toggled.connect(self.update_statistics)
+        self.period_day.toggled.connect(self.update_statistics)
+        self.stats_type_combo.currentTextChanged.connect(self.update_statistics)
+        self.stats_month_combo.currentTextChanged.connect(self.update_statistics)
+        self.stats_date_from.dateChanged.connect(self.update_statistics)
+        self.stats_date_to.dateChanged.connect(self.update_statistics)
+
+        controls_layout.addStretch()
+        layout.addLayout(controls_layout)
+
+        # Область для графика
+        self.stats_figure = Figure(figsize=(8, 5))
+        self.stats_canvas = FigureCanvas(self.stats_figure)
+        self.stats_toolbar = NavigationToolbar(self.stats_canvas, widget)
+
+        chart_layout = QVBoxLayout()
+        chart_layout.addWidget(self.stats_toolbar)
+        chart_layout.addWidget(self.stats_canvas)
+
+        layout.addLayout(chart_layout)
+
+        # Начальная загрузка статистики
+        QTimer.singleShot(100, self.update_statistics)
+
+        return widget
     def _nav_back(self):
         if not self._nav_stack:
             return
@@ -320,6 +516,22 @@ class MedicalApp(QMainWindow):
         base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
         data_dir = os.path.join(base_path, 'data')
         dialog = DiagnosisManagerDialog(self, data_dir)
+        dialog.exec()
+
+    def _open_statistics(self):
+        """Открывает окно статистики"""
+        from PySide6.QtWidgets import QDialog, QVBoxLayout
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Статистика")
+        dialog.resize(900, 700)
+        
+        # Создаем виджет статистики
+        stats_widget = self._create_stats_widget()
+        
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(stats_widget)
+        
         dialog.exec()
 
     def check_for_updates(self, manual=False):
@@ -532,10 +744,10 @@ class MedicalApp(QMainWindow):
         outcome = case[7] or ""
         status = case[8] or "active"
         final_diagnosis = case[9] or ""
-        surname = case[14] or ""
-        name = case[15] or ""
-        dob = self._format_date(case[16] or "")
-        patronymic = case[17] or ""
+        surname = case[15] or ""
+        name = case[16] or ""
+        dob = self._format_date(case[17] or "")
+        patronymic = case[18] or ""
 
         histories = self.db.get_histories(patient_id)
         histories = [h for h in histories if h[11] == case_id]
@@ -604,6 +816,108 @@ class MedicalApp(QMainWindow):
         self.archive_month_combo.setCurrentText("Все")
         self.archive_outcome_combo.setCurrentText("Все")
         self.load_patients()
+
+    def _archive_prev_page(self):
+        """Переход на предыдущую страницу архива"""
+        if self.archive_current_page > 1:
+            self.archive_current_page -= 1
+            self._populate_archive_page()
+
+    def _archive_next_page(self):
+        """Переход на следующую страницу архива"""
+        if self.archive_current_page < self.archive_total_pages:
+            self.archive_current_page += 1
+            self._populate_archive_page()
+
+    def _populate_archive_page(self):
+        """Заполняет текущую страницу архива"""
+        if not hasattr(self, 'archive_filtered_cases'):
+            return
+            
+        # Вычисляем индексы для текущей страницы
+        start_idx = (self.archive_current_page - 1) * self.archive_page_size
+        end_idx = start_idx + self.archive_page_size
+        
+        # Получаем записи для текущей страницы
+        page_cases = self.archive_filtered_cases[start_idx:end_idx]
+        
+        # Заполняем таблицу
+        self.archive_tree.setSortingEnabled(False)
+        self.archive_tree.setRowCount(0)
+        
+        query = self.search_entry.text().strip().lower() if hasattr(self, 'search_entry') else ""
+        
+        for case in page_cases:
+            summary = self._get_case_summary(case)
+            if query and query not in summary["fio"].lower() and query not in summary["diagnosis"].lower() and query not in summary["card_number"].lower():
+                continue
+            if not self._passes_archive_filters(summary):
+                continue
+                
+            row = self.archive_tree.rowCount()
+            self.archive_tree.insertRow(row)
+            row_color = self._outcome_color(summary["outcome"])
+            
+            values = [
+                summary["admission_date"],
+                summary["discharge_date"],
+                summary["card_number"],
+                summary["fio"],
+                summary["dob"],
+                summary["diagnosis"],
+                summary["outcome"],
+                summary["days"],
+            ]
+            
+            for col, value in enumerate(values):
+                self._set_case_item(self.archive_tree, row, col, value, summary, row_color)
+        
+        self.archive_tree.setSortingEnabled(True)
+        
+        # Обновляем элементы пагинации
+        self._update_archive_pagination()
+
+    def _update_archive_pagination(self):
+        """Обновляет состояние элементов пагинации"""
+        total_records = len(self.archive_filtered_cases)
+        
+        # Обновляем лейблы
+        self.archive_page_label.setText(f"Страница {self.archive_current_page} из {self.archive_total_pages}")
+        self.archive_info_label.setText(f"Записей: {total_records}")
+        
+        # Обновляем состояние кнопок
+        self.archive_prev_btn.setEnabled(self.archive_current_page > 1)
+        self.archive_next_btn.setEnabled(self.archive_current_page < self.archive_total_pages)
+
+    def _on_month_preset_changed(self):
+        """Устанавливает даты по выбранному месяцу"""
+        month_text = self.stats_month_combo.currentText()
+        if month_text == "Все период":
+            # Возвращаем к значениям по умолчанию
+            self.stats_date_from.setDate(QDate.currentDate().addYears(-1))
+            self.stats_date_to.setDate(QDate.currentDate())
+            return
+
+        # Словарь для преобразования названия месяца в номер
+        month_names = {
+            "Январь": 1, "Февраль": 2, "Март": 3, "Апрель": 4, "Май": 5, "Июнь": 6,
+            "Июль": 7, "Август": 8, "Сентябрь": 9, "Октябрь": 10, "Ноябрь": 11, "Декабрь": 12
+        }
+        
+        if month_text in month_names:
+            current_year = QDate.currentDate().year()
+            month_num = month_names[month_text]
+            
+            # Устанавливаем дату начала месяца
+            start_date = QDate(current_year, month_num, 1)
+            self.stats_date_from.setDate(start_date)
+            
+            # Устанавливаем дату конца месяца
+            if month_num == 12:
+                end_date = QDate(current_year, 12, 31)
+            else:
+                end_date = QDate(current_year, month_num + 1, 1).addDays(-1)
+            self.stats_date_to.setDate(end_date)
 
     def _refresh_archive_filters(self, summaries):
         current_year = self.archive_year_combo.currentText()
@@ -752,8 +1066,14 @@ class MedicalApp(QMainWindow):
         self.discharged_month_count_label.setText(str(discharged_this_month))
         archived_summaries = [self._get_case_summary(case) for case in archived_cases]
         self._refresh_archive_filters(archived_summaries)
+        
+        # Сохраняем отфильтрованные записи архива для пагинации
+        self.archive_filtered_cases = archived_cases
+        self.archive_current_page = 1
+        self.archive_total_pages = max(1, (len(archived_cases) + self.archive_page_size - 1) // self.archive_page_size)
+        
         self._populate_case_table(self.tree, open_cases)
-        self._populate_case_table(self.archive_tree, archived_cases)
+        self._populate_archive_page()  # Используем пагинацию для архива
 
     def _parse_case_date(self, value):
         value = (value or "").strip()
@@ -926,6 +1246,144 @@ class MedicalApp(QMainWindow):
             return
         QMessageBox.information(self, "Успех", "История болезни полностью удалена.")
         self.load_patients()
+
+    def update_statistics(self):
+        """Обновляет статистические графики"""
+        if not MATPLOTLIB_AVAILABLE:
+            return
+
+        # Полностью отключаем все предупреждения matplotlib
+        import warnings
+        warnings.filterwarnings("ignore", category=UserWarning)
+        warnings.filterwarnings("ignore", category=RuntimeWarning)
+        
+        # Отключаем warnings в matplotlib
+        import matplotlib
+        matplotlib.set_loglevel('ERROR')
+
+        # Получаем параметры
+        date_from = self.stats_date_from.date().toString("yyyy-MM-dd")
+        date_to = self.stats_date_to.date().toString("yyyy-MM-dd")
+
+        if self.period_year.isChecked():
+            period = 'year'
+        elif self.period_month.isChecked():
+            period = 'month'
+        else:
+            period = 'day'
+
+        stats_type = self.stats_type_combo.currentText()
+
+        # Очищаем предыдущий график
+        self.stats_figure.clear()
+
+        # Создаем график
+        ax = self.stats_figure.add_subplot(111)
+
+        try:
+            if stats_type == "Количество госпитализаций":
+                data = self.db.get_admissions_by_period(date_from, date_to, period)
+                if data:
+                    periods, counts = zip(*data)
+                    # Адаптивная ширина столбцов: тонкие при многих данных, шире при малом количестве
+                    bar_width = min(0.6, max(0.3, 0.8 / len(periods)))
+                    bars = ax.bar(periods, counts, color='#2ecc71', alpha=0.7, width=bar_width, label='Госпитализации')
+                    ax.set_title('Количество госпитализаций по периодам')
+                    ax.set_xlabel('Период')
+                    ax.set_ylabel('Количество')
+                    plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+                    ax.legend()
+                    
+                    # Добавляем значения на вершине столбцов
+                    for bar, count in zip(bars, counts):
+                        ax.text(bar.get_x() + bar.get_width()/2, bar.get_height(), 
+                               f'{int(count)}', ha='center', va='bottom', 
+                               fontsize=10, fontweight='bold')
+
+            elif stats_type == "Количество выписок":
+                data = self.db.get_discharges_by_period(date_from, date_to, period)
+                if data:
+                    periods, counts = zip(*data)
+                    # Адаптивная ширина столбцов: тонкие при многих данных, шире при малом количестве
+                    bar_width = min(0.6, max(0.3, 0.8 / len(periods)))
+                    bars = ax.bar(periods, counts, color='#e74c3c', alpha=0.7, width=bar_width, label='Выписки')
+                    ax.set_title('Количество выписок по периодам')
+                    ax.set_xlabel('Период')
+                    ax.set_ylabel('Количество')
+                    plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+                    ax.legend()
+                    
+                    # Добавляем значения на вершине столбцов
+                    for bar, count in zip(bars, counts):
+                        ax.text(bar.get_x() + bar.get_width()/2, bar.get_height(), 
+                               f'{int(count)}', ha='center', va='bottom', 
+                               fontsize=10, fontweight='bold')
+
+            elif stats_type == "Средняя длительность лечения":
+                data = self.db.get_avg_treatment_duration_by_period(date_from, date_to, period)
+                if data:
+                    periods, durations = zip(*data)
+                    ax.plot(periods, durations, 'o-', color='#3498db', linewidth=2, markersize=6, label='Длительность лечения')
+                    ax.set_title('Средняя длительность лечения по периодам')
+                    ax.set_xlabel('Период')
+                    ax.set_ylabel('Длительность (дни)')
+                    plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+                    ax.legend()
+
+            elif stats_type == "Распределение диагнозов":
+                data = self.db.get_diagnosis_distribution(date_from, date_to)
+                if data:
+                    diagnoses, counts = zip(*data)
+                    # Обрезаем длинные названия диагнозов
+                    short_diagnoses = [d[:30] + '...' if len(d) > 30 else d for d in diagnoses]
+                    # Адаптивная высота столбцов: тонкие при многих данных, выше при малом количестве
+                    bar_height = min(0.6, max(0.3, 0.8 / len(short_diagnoses)))
+                    bars = ax.barh(short_diagnoses, counts, color='#9b59b6', alpha=0.7, height=bar_height)
+                    ax.set_title('Распределение диагнозов')
+                    ax.set_xlabel('Количество случаев')
+                    ax.set_ylabel('Диагноз')
+                    
+                    # Добавляем значения на конце столбцов (справа)
+                    for bar, count in zip(bars, counts):
+                        ax.text(bar.get_width(), bar.get_y() + bar.get_height()/2, 
+                               f'{int(count)}', ha='left', va='center', 
+                               fontsize=9, fontweight='bold')
+
+            elif stats_type == "Распределение исходов":
+                data = self.db.get_outcome_distribution(date_from, date_to)
+                if data:
+                    outcomes, counts = zip(*data)
+                    ax.pie(counts, labels=outcomes, autopct='%1.1f%%', startangle=90)
+                    ax.set_title('Распределение исходов лечения')
+                    ax.axis('equal')
+
+            # Настраиваем сетку и отступы
+            ax.grid(True, alpha=0.3)
+            
+            # Устанавливаем минимальные пределы осей для предотвращения предупреждений matplotlib
+            try:
+                xlim = ax.get_xlim()
+                ylim = ax.get_ylim()
+                if xlim[0] >= xlim[1]:
+                    ax.set_xlim(0, 1)
+                if ylim[0] >= ylim[1] or ylim[0] < 0:
+                    ax.set_ylim(0, max(ylim[1], 1))
+            except:
+                pass  # Игнорируем ошибки установки пределов
+            
+            self.stats_figure.tight_layout()
+
+        except Exception as e:
+            ax.text(0.5, 0.5, f'Ошибка при построении графика:\n{str(e)}',
+                   ha='center', va='center', transform=ax.transAxes,
+                   fontsize=12, color='red')
+            ax.set_xlim(0, 1)
+            ax.set_ylim(0, 1)
+            ax.axis('off')
+
+        # Обновляем canvas
+        self.stats_canvas.draw()
+
 
 class NewPatientDialog(QDialog):
     def __init__(self, parent):
