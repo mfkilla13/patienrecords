@@ -1,6 +1,6 @@
 {
-  "version": "2.9.4",
+  "version": "2.9.5",
   "package_type": "zip",
-  "download_url": "https://github.com/mfkilla13/patienrecords/releases/download/v2.9.4/MedQT-win.zip",
-  "notes": "Справочники diagnoses/examinations/treatment переведены на внешнюю папку data рядом с приложением, а Печать записей теперь доступна и в архиве."
+  "download_url": "https://github.com/mfkilla13/patienrecords/releases/download/v2.9.5/MedQT-win.zip",
+  "notes": "Настроены поля страницы по умолчанию для печати, справочники продолжают работать из внешней папки data, а печать записей доступна и в архиве."
 }

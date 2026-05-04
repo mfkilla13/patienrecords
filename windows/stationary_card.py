@@ -66,24 +66,10 @@ def _print_document_without_page_numbers(printer, document):
         except Exception:
             pass
 
-        source_dpi_x = 96.0
-        source_dpi_y = 96.0
-        try:
-            screen = QApplication.primaryScreen()
-            if screen is not None:
-                source_dpi_x = screen.logicalDotsPerInchX()
-                source_dpi_y = screen.logicalDotsPerInchY()
-        except Exception:
-            pass
-
-        horizontal_margin = int((2 / 2.54) * source_dpi_x)
-        vertical_margin = int((2 / 2.54) * source_dpi_y)
-        fmt = cloned.rootFrame().frameFormat()
-        fmt.setLeftMargin(horizontal_margin)
-        fmt.setRightMargin(horizontal_margin)
-        fmt.setTopMargin(vertical_margin)
-        fmt.setBottomMargin(vertical_margin)
-        cloned.rootFrame().setFrameFormat(fmt)
+        # Do not derive document margins from screen DPI: that makes print
+        # geometry drift between machines. Let the printer/page geometry define
+        # the printable area, and keep the QTextDocument margin neutral.
+        cloned.setDocumentMargin(0)
 
         cloned.setPageSize(QSizeF(printer.width(), printer.height()))
         cloned.print_(printer)
@@ -1210,7 +1196,7 @@ class StationaryCardPage(QWidget):
         
         # Создаем принтер и диалог предварительного просмотра
         printer = QPrinter(QPrinter.HighResolution)
-        printer.setPageMargins(QMarginsF(0, 0, 0, 0), QPageLayout.Millimeter)
+        printer.setPageMargins(QMarginsF(15, 20, 15, 20), QPageLayout.Millimeter)
         
         preview = QPrintPreviewDialog(printer, self)
         preview.setWindowTitle("Предварительный просмотр")
@@ -1520,7 +1506,7 @@ class StationaryCardPage(QWidget):
     def _print_discharge_form(self, history):
         printer = QPrinter(QPrinter.HighResolution)
         printer.setPageSize(QPageSize(QPageSize.A4))
-        printer.setPageMargins(QMarginsF(0, 0, 0, 0), QPageLayout.Millimeter)
+        printer.setPageMargins(QMarginsF(15, 20, 15, 20), QPageLayout.Millimeter)
 
         preview = QPrintPreviewDialog(printer, self)
         preview.setWindowTitle("Предварительный просмотр выписки")
@@ -1887,7 +1873,7 @@ class DiaryPrintDialog(QDialog):
 
         printer = QPrinter(QPrinter.HighResolution)
         printer.setPageSize(QPageSize(QPageSize.A4))
-        printer.setPageMargins(QMarginsF(0, 0, 0, 0), QPageLayout.Millimeter)
+        printer.setPageMargins(QMarginsF(15, 20, 15, 20), QPageLayout.Millimeter)
 
         preview = QPrintPreviewDialog(printer, self)
         preview.setWindowTitle("Предварительный просмотр записей")
