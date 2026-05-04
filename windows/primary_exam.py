@@ -3,6 +3,7 @@ import os
 import sys
 import html
 from .config import LOCAL_ROWS_CONFIG
+from data_files import load_data_json, user_data_path
 from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -316,15 +317,11 @@ class DiagnosisManagerDialog(QDialog):
     def _load_diagnoses(self):
         diag_type = self.type_combo.currentText()
         if diag_type == "Офтальмологические":
-            file_path = os.path.join(self.data_dir, 'ophthalmic_diagnoses.json')
+            file_path = str(user_data_path('ophthalmic_diagnoses.json'))
+            diagnoses = load_data_json('ophthalmic_diagnoses.json', [])
         else:
-            file_path = os.path.join(self.data_dir, 'comorbid_diagnoses.json')
-
-        if os.path.exists(file_path):
-            with open(file_path, 'r', encoding='utf-8') as f:
-                diagnoses = json.load(f)
-        else:
-            diagnoses = []
+            file_path = str(user_data_path('comorbid_diagnoses.json'))
+            diagnoses = load_data_json('comorbid_diagnoses.json', [])
 
         self.diag_list.clear()
         self.diag_list.addItems(diagnoses)
@@ -1197,23 +1194,9 @@ class PrimaryExamWindow(QDialog):
         self.update_diag_labels()
         self.update_comorbid_label()
 
-        # Загрузка списков диагнозов из файлов
-        # Поддержка PyInstaller: используем sys._MEIPASS для exe, иначе относительный путь
-        base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        data_dir = os.path.join(base_path, 'data')
-        ophthalmic_file = os.path.join(data_dir, 'ophthalmic_diagnoses.json')
-        if os.path.exists(ophthalmic_file):
-            with open(ophthalmic_file, 'r', encoding='utf-8') as f:
-                self.ophthalmic_diagnoses = json.load(f)
-        else:
-            self.ophthalmic_diagnoses = []
-
-        comorbid_file = os.path.join(data_dir, 'comorbid_diagnoses.json')
-        if os.path.exists(comorbid_file):
-            with open(comorbid_file, 'r', encoding='utf-8') as f:
-                self.comorbid_diagnoses = json.load(f)
-        else:
-            self.comorbid_diagnoses = []
+        # Загрузка справочников диагнозов из bundled + пользовательских файлов
+        self.ophthalmic_diagnoses = load_data_json('ophthalmic_diagnoses.json', [])
+        self.comorbid_diagnoses = load_data_json('comorbid_diagnoses.json', [])
 
         button_layout4 = QHBoxLayout()
         back_button4 = QPushButton("Назад")
@@ -1273,10 +1256,7 @@ class PrimaryExamWindow(QDialog):
         treatment_grid.setColumnStretch(1, 1)
 
         self.treatment_basis_fields = {}
-        # Поддержка PyInstaller: используем sys._MEIPASS для exe, иначе относительный путь
-        base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        data_dir = os.path.join(base_path, 'data')
-        treatment_json = os.path.join(data_dir, "treatment_basis.json")
+        treatment_json = str(user_data_path("treatment_basis.json"))
 
         treatment_cats = [
             ("Ангиоретинопротектор", "angio_retino"),
@@ -1300,13 +1280,7 @@ class PrimaryExamWindow(QDialog):
         ]
 
         # Загружаем все данные один раз
-        all_tr_data = {}
-        if os.path.exists(treatment_json):
-            try:
-                with open(treatment_json, "r", encoding="utf-8") as f:
-                    all_tr_data = json.load(f)
-            except:
-                pass
+        all_tr_data = load_data_json("treatment_basis.json", {})
 
         for i, (label_text, category) in enumerate(treatment_cats):
             lbl = QLabel(label_text + ":")
@@ -1334,45 +1308,29 @@ class PrimaryExamWindow(QDialog):
         self.tab_widget.addTab(treatment_widget, "Обоснование лечения")
 
         # Список обследований
-        # Поддержка PyInstaller: используем sys._MEIPASS для exe, иначе относительный путь
-        base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        data_dir = os.path.join(base_path, 'data')
-        examinations_json = os.path.join(data_dir, "examinations.json")
-        self.examinations_json = examinations_json
-        self.examinations = []
-        if os.path.exists(examinations_json):
-            try:
-                with open(examinations_json, "r", encoding="utf-8") as f:
-                    self.examinations = json.load(f)
-            except:
-                self.examinations = [
-                    "Общий анализ крови",
-                    "Общий анализ мочи",
-                    "Биохимический анализ крови",
-                    "Коагулограмма",
-                    "ЭКГ",
-                    "Рентгенография органов грудной клетки",
-                    "УЗИ органов брюшной полости",
-                    "Консультация терапевта",
-                    "Консультация окулиста",
-                    "Консультация невролога",
-                ]
+        self.examinations_json = str(user_data_path("examinations.json"))
+        self.examinations = load_data_json("examinations.json", [
+            "Общий анализ крови",
+            "Общий анализ мочи",
+            "Биохимический анализ крови",
+            "Коагулограмма",
+            "ЭКГ",
+            "Рентгенография органов грудной клетки",
+            "УЗИ органов брюшной полости",
+            "Консультация терапевта",
+            "Консультация окулиста",
+            "Консультация невролога",
+        ])
 
     def select_comorbid_diagnoses(self):
-        # Поддержка PyInstaller: используем sys._MEIPASS для exe, иначе относительный путь
-        base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        data_dir = os.path.join(base_path, 'data')
-        comorbid_file = os.path.join(data_dir, 'comorbid_diagnoses.json')
+        comorbid_file = str(user_data_path('comorbid_diagnoses.json'))
         dialog = EnhancedMultiSelectDialog(self, "Выбор сопутствующих диагнозов", self.comorbid_diagnoses, self.selected_comorbid_diagnoses, self.custom_comorbid_diagnosis, comorbid_file)
         if dialog.exec() == QDialog.Accepted:
             self.selected_comorbid_diagnoses, self.custom_comorbid_diagnosis = dialog.get_result()
             self.update_comorbid_label()
 
     def select_diagnoses(self, eye):
-        # Поддержка PyInstaller: используем sys._MEIPASS для exe, иначе относительный путь
-        base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        data_dir = os.path.join(base_path, 'data')
-        ophthalmic_file = os.path.join(data_dir, 'ophthalmic_diagnoses.json')
+        ophthalmic_file = str(user_data_path('ophthalmic_diagnoses.json'))
         if eye == "OD":
             selected = self.selected_diagnoses_od
             custom = self.custom_diagnosis_od

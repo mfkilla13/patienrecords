@@ -1,6 +1,6 @@
 {
-  "version": "2.9.3",
+  "version": "2.9.4",
   "package_type": "zip",
-  "download_url": "https://github.com/mfkilla13/patienrecords/releases/download/v2.9.3/MedQT-win.zip",
-  "notes": "Добавлен номер медкарты в историю болезни и выписку, доработана печать, статистика включена в Windows-сборку, а автообновление теперь не перезаписывает пользовательские JSON-справочники."
+  "download_url": "https://github.com/mfkilla13/patienrecords/releases/download/v2.9.4/MedQT-win.zip",
+  "notes": "Справочники diagnoses/examinations/treatment переведены на внешнюю папку data рядом с приложением, а Печать записей теперь доступна и в архиве."
 }

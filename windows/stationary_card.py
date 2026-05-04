@@ -770,7 +770,7 @@ class StationaryCardPage(QWidget):
         for edit in self.findChildren(QTextEdit):
             edit.setReadOnly(True)
         for button in self.findChildren(QPushButton):
-            if button.text() not in ("🖨️", "Печать"):
+            if button.text() not in ("🖨️", "Печать", "Печать записей"):
                 button.setEnabled(False)
 
     def select_date(self, entry):

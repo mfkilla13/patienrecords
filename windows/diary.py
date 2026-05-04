@@ -2,6 +2,7 @@ import html
 import json
 import os
 import sys
+from data_files import load_data_json, user_data_path
 
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (
@@ -338,8 +339,8 @@ class DiaryWindow(QDialog):
         treatment_layout.addWidget(self.basis_box)
 
         self.treatment_basis_fields = {}
-        treatment_json = self._data_path("treatment_basis.json")
-        treatment_data = self._read_json(treatment_json)
+        treatment_json = str(user_data_path("treatment_basis.json"))
+        treatment_data = load_data_json("treatment_basis.json", {})
         for row, (label, category) in enumerate(TREATMENT_CATS):
             basis_layout.addWidget(QLabel(label + ":"), row, 0)
             button = EnhancedMultiSelectButton(label, treatment_data.get(category, []), file_path=treatment_json, category=category)
@@ -408,20 +409,6 @@ class DiaryWindow(QDialog):
             if not enabled:
                 widget.clear()
         eq_label.setEnabled(enabled)
-
-    def _data_path(self, file_name):
-        base_path = getattr(sys, "_MEIPASS", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        return os.path.join(base_path, "data", file_name)
-
-    def _read_json(self, path):
-        if not os.path.exists(path):
-            return {}
-        try:
-            with open(path, "r", encoding="utf-8") as file:
-                data = json.load(file)
-            return data if isinstance(data, dict) else {}
-        except Exception:
-            return {}
 
     def _set_treatment_text(self, text):
         self.treatment_text.setPlainText(text)
