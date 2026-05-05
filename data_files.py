@@ -1,16 +1,17 @@
 import json
+import os
 import sys
 from pathlib import Path
 
 
 def app_dir():
     if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent
-    return Path(__file__).resolve().parent
+        return Path(os.path.abspath(sys.executable)).parent
+    return Path(os.path.abspath(__file__)).parent
 
 
 def bundled_data_dir():
-    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    base = Path(getattr(sys, "_MEIPASS", Path(os.path.abspath(__file__)).parent))
     return base / "data"
 
 
@@ -75,4 +76,3 @@ def load_data_json(file_name, default):
         return result
 
     return user if user != default else bundled
-

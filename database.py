@@ -2,6 +2,7 @@ import sqlite3
 from pathlib import Path
 from datetime import datetime
 import sys
+import os
 
 class Database:
     CURRENT_SCHEMA_VERSION = 4
@@ -20,8 +21,8 @@ class Database:
         if db_path.is_absolute():
             return str(db_path)
         if getattr(sys, "frozen", False):
-            return str(Path(sys.executable).resolve().parent / db_name)
-        return str((Path(__file__).resolve().parent / db_name).resolve())
+            return str(Path(os.path.abspath(sys.executable)).parent / db_name)
+        return str(Path(os.path.abspath(__file__)).parent / db_name)
 
     def migrate_schema(self):
         user_version = self._get_user_version()

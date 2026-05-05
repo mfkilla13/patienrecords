@@ -1,6 +1,6 @@
 {
-  "version": "2.9.5",
+  "version": "2.9.6",
   "package_type": "zip",
-  "download_url": "https://github.com/mfkilla13/patienrecords/releases/download/v2.9.5/MedQT-win.zip",
-  "notes": "Настроены поля страницы по умолчанию для печати, справочники продолжают работать из внешней папки data, а печать записей доступна и в архиве."
+  "download_url": "https://github.com/mfkilla13/patienrecords/releases/download/v2.9.6/MedQT-win.zip",
+  "notes": "Исправлен механизм автообновления: добавлены подробные логи, убран проблемный resolve() для путей приложения и исправлено исключение пользовательских JSON-файлов при копировании обновления."
 }

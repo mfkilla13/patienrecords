@@ -58,8 +58,8 @@ def fetch_update_info(url=UPDATE_MANIFEST_URL, timeout=5):
 
 def app_install_dir():
     if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent
-    return Path(__file__).resolve().parent
+        return Path(os.path.abspath(sys.executable)).parent
+    return Path(os.path.abspath(__file__)).parent
 
 
 def can_self_update():
@@ -93,9 +93,9 @@ def _windows_path(value):
 
 
 def launch_windows_updater(package_path):
-    package_path = Path(package_path).resolve()
-    app_dir = app_install_dir().resolve()
-    app_exe = Path(sys.executable).resolve()
+    package_path = Path(os.path.abspath(package_path))
+    app_dir = app_install_dir()
+    app_exe = Path(os.path.abspath(sys.executable))
     work_dir = package_path.parent
     extract_dir = work_dir / "expanded"
     script_path = work_dir / "apply_update.bat"
@@ -105,9 +105,27 @@ set "ZIP={_windows_path(package_path)}"
 set "APPDIR={_windows_path(app_dir)}"
 set "APP_EXE={_windows_path(app_exe)}"
 set "EXTRACTDIR={_windows_path(extract_dir)}"
+set "LOG=%APPDIR%\\update.log"
+set "ERRLOG=%APPDIR%\\update_error.log"
+
+echo ==== MedQT updater started %date% %time% ==== > "%LOG%"
+echo ZIP=%ZIP% >> "%LOG%"
+echo APPDIR=%APPDIR% >> "%LOG%"
+echo APP_EXE=%APP_EXE% >> "%LOG%"
+echo SYS_EXECUTABLE={_windows_path(os.path.abspath(sys.executable))} >> "%LOG%"
+echo SYS_ARGV0={_windows_path(os.path.abspath(sys.argv[0]))} >> "%LOG%"
+echo CWD={_windows_path(os.getcwd())} >> "%LOG%"
+echo FROZEN={str(bool(getattr(sys, "frozen", False))).lower()} >> "%LOG%"
+if exist "%ERRLOG%" del /F /Q "%ERRLOG%"
 
 if exist "%EXTRACTDIR%" rmdir /S /Q "%EXTRACTDIR%"
 mkdir "%EXTRACTDIR%"
+if errorlevel 1 (
+    echo Failed to create extract dir "%EXTRACTDIR%". >> "%LOG%"
+    echo Не удалось создать временную папку обновления. > "%ERRLOG%"
+    echo Подробности: "%LOG%" >> "%ERRLOG%"
+    exit /b 1
+)
 
 :waitloop
 tasklist /FI "IMAGENAME eq {app_exe.name}" | find /I "{app_exe.name}" >nul
@@ -116,8 +134,38 @@ if not errorlevel 1 (
     goto waitloop
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -Path '%ZIP%' -DestinationPath '%EXTRACTDIR%' -Force"
-robocopy "%EXTRACTDIR%" "%APPDIR%" /E /R:1 /W:1 /XF patients.db *.db data\\*.json /XD backups >nul
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -Path '%ZIP%' -DestinationPath '%EXTRACTDIR%' -Force" >> "%LOG%" 2>&1
+if errorlevel 1 (
+    echo Expand-Archive failed. >> "%LOG%"
+    echo Не удалось распаковать обновление. > "%ERRLOG%"
+    echo Подробности: "%LOG%" >> "%ERRLOG%"
+    exit /b 2
+)
+
+echo Expanded files: >> "%LOG%"
+dir "%EXTRACTDIR%" /B >> "%LOG%" 2>&1
+
+robocopy "%EXTRACTDIR%" "%APPDIR%" /E /R:1 /W:1 /XF patients.db *.db addresses.json ophthalmic_diagnoses.json comorbid_diagnoses.json treatment_basis.json examinations.json /XD backups >> "%LOG%" 2>&1
+set "ROBOCOPY_EXIT=%ERRORLEVEL%"
+echo Robocopy exit code=%ROBOCOPY_EXIT% >> "%LOG%"
+if %ROBOCOPY_EXIT% GEQ 8 (
+    echo Robocopy reported failure. >> "%LOG%"
+    echo Не удалось скопировать файлы обновления. > "%ERRLOG%"
+    echo Код robocopy: %ROBOCOPY_EXIT% >> "%ERRLOG%"
+    echo Подробности: "%LOG%" >> "%ERRLOG%"
+    exit /b %ROBOCOPY_EXIT%
+)
+
+echo App dir after copy: >> "%LOG%"
+dir "%APPDIR%" /B >> "%LOG%" 2>&1
+if not exist "%APP_EXE%" (
+    echo Updated executable not found: "%APP_EXE%" >> "%LOG%"
+    echo После обновления не найден исполняемый файл. > "%ERRLOG%"
+    echo Подробности: "%LOG%" >> "%ERRLOG%"
+    exit /b 3
+)
+
+echo Starting updated app... >> "%LOG%"
 start "" "%APP_EXE%"
 endlocal
 """

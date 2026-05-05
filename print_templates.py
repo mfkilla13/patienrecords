@@ -1,11 +1,12 @@
 from pathlib import Path
+import os
 import sys
 
 
 def _app_base_dir():
     if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent
-    return Path(__file__).resolve().parent
+        return Path(os.path.abspath(sys.executable)).parent
+    return Path(os.path.abspath(__file__)).parent
 
 
 def template_path(name):

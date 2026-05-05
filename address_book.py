@@ -50,12 +50,12 @@ DEFAULT_ADDRESSES = {
 
 def _app_dir():
     if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent
-    return Path(__file__).resolve().parent
+        return Path(os.path.abspath(sys.executable)).parent
+    return Path(os.path.abspath(__file__)).parent
 
 
 def _bundled_path():
-    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    base = Path(getattr(sys, "_MEIPASS", Path(os.path.abspath(__file__)).parent))
     return base / "data" / "addresses.json"
 
 

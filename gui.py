@@ -563,7 +563,7 @@ class MedicalApp(QMainWindow):
                 QMessageBox.information(
                     self,
                     "Обновления",
-                    "Обновление скачано. Приложение закроется и запустится снова после установки.",
+                    "Обновление скачано. Приложение закроется и запустится снова после установки.\n\nЕсли что-то пойдет не так, посмотрите файлы update.log и update_error.log в папке программы.",
                 )
                 QApplication.instance().quit()
             return
