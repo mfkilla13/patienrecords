@@ -1,6 +1,6 @@
 {
-  "version": "2.9.6",
+  "version": "2.9.7",
   "package_type": "zip",
-  "download_url": "https://github.com/mfkilla13/patienrecords/releases/download/v2.9.6/MedQT-win.zip",
-  "notes": "Исправлен механизм автообновления: добавлены подробные логи, убран проблемный resolve() для путей приложения и исправлено исключение пользовательских JSON-файлов при копировании обновления."
+  "download_url": "https://github.com/mfkilla13/patienrecords/releases/download/v2.9.7/MedQT-win.zip",
+  "notes": "Исправлен автоапдейтер на Windows и добавлен новый режим печати записей от указанной границы с запоминанием последнего отступа."
 }

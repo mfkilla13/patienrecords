@@ -98,6 +98,8 @@ class Database:
                 diary_current_page_used_mm INTEGER NOT NULL DEFAULT 0,
                 diary_last_printed_at TEXT,
                 diary_last_batch_id TEXT,
+                custom_top_offset_mm INTEGER NOT NULL DEFAULT 0,
+                custom_last_printed_at TEXT,
                 FOREIGN KEY (case_id) REFERENCES medical_cases (id)
             )
         ''')
@@ -223,6 +225,10 @@ class Database:
             ('created_at', 'created_at TEXT'),
             ('closed_at', 'closed_at TEXT'),
             ('medical_record_number', 'medical_record_number TEXT DEFAULT ""'),
+        ])
+        self._ensure_columns('case_print_state', [
+            ('custom_top_offset_mm', 'custom_top_offset_mm INTEGER NOT NULL DEFAULT 0'),
+            ('custom_last_printed_at', 'custom_last_printed_at TEXT'),
         ])
 
     def _migrate_medical_cases(self):
@@ -511,14 +517,15 @@ class Database:
 
     def get_case_print_state(self, case_id):
         cursor = self.conn.execute('''
-            SELECT case_id, diary_current_page_used_mm, diary_last_printed_at, diary_last_batch_id
+            SELECT case_id, diary_current_page_used_mm, diary_last_printed_at, diary_last_batch_id,
+                   custom_top_offset_mm, custom_last_printed_at
               FROM case_print_state
              WHERE case_id = ?
         ''', (case_id,))
         row = cursor.fetchone()
         if row:
             return row
-        return (case_id, 0, None, None)
+        return (case_id, 0, None, None, 0, None)
 
     def mark_histories_printed(self, record_ids, batch_id, top_offset_mm, printed_at=None):
         if not record_ids:
@@ -541,6 +548,18 @@ class Database:
                 diary_last_printed_at = excluded.diary_last_printed_at,
                 diary_last_batch_id = excluded.diary_last_batch_id
         ''', (case_id, int(used_mm), printed_at, batch_id))
+        self.conn.commit()
+
+    def update_case_custom_print_state(self, case_id, top_offset_mm, printed_at=None):
+        printed_at = printed_at or datetime.now().isoformat()
+        self.conn.execute('''
+            INSERT INTO case_print_state (
+                case_id, custom_top_offset_mm, custom_last_printed_at
+            ) VALUES (?, ?, ?)
+            ON CONFLICT(case_id) DO UPDATE SET
+                custom_top_offset_mm = excluded.custom_top_offset_mm,
+                custom_last_printed_at = excluded.custom_last_printed_at
+        ''', (case_id, int(top_offset_mm), printed_at))
         self.conn.commit()
 
     def update_history(self, history_id_row, record_type, examination, diagnosis, treatment, notes, visit_date=None, diag_admission='', diag_clinical='', diag_comorbid='', logical_history_id=None):

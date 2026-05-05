@@ -1,7 +1,7 @@
 import html
 import json
 import uuid
-from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout, QStackedWidget, QLabel, QLineEdit, QPushButton, QTextEdit, QTabWidget, QWidget as QtWidget, QListWidget, QListWidgetItem, QMessageBox, QInputDialog, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QDialog, QComboBox, QCheckBox
+from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout, QStackedWidget, QLabel, QLineEdit, QPushButton, QTextEdit, QTabWidget, QWidget as QtWidget, QListWidget, QListWidgetItem, QMessageBox, QInputDialog, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QDialog, QComboBox, QCheckBox, QSpinBox
 from PySide6.QtCore import Qt, QMarginsF, QDate, QSizeF
 from PySide6.QtGui import QTextDocument, QPageLayout, QPageSize, QTextCursor, QTextCharFormat, QFont, QTextTableFormat, QTextBlockFormat
 from PySide6.QtPrintSupport import QPrintPreviewDialog, QPrinter
@@ -1754,10 +1754,22 @@ class DiaryPrintDialog(QDialog):
         self.mode_combo.addItem("Печать новых", "new")
         self.mode_combo.addItem("Перепечатать выбранные", "reprint")
         self.mode_combo.addItem("Печатать выбранные с нового листа", "selected_new_page")
+        self.mode_combo.addItem("Печатать от указанной границы", "selected_from_offset")
         self.mode_combo.addItem("Печать всех", "all")
         self.mode_combo.currentIndexChanged.connect(self.refresh_records)
         mode_row.addWidget(self.mode_combo, 1)
         layout.addLayout(mode_row)
+
+        offset_row = QHBoxLayout()
+        self.offset_label = QLabel("Отступ сверху на первой странице:")
+        offset_row.addWidget(self.offset_label)
+        self.offset_spin = QSpinBox()
+        self.offset_spin.setRange(0, 290)
+        self.offset_spin.setSuffix(" мм")
+        self.offset_spin.setValue(0)
+        offset_row.addWidget(self.offset_spin)
+        offset_row.addStretch(1)
+        layout.addLayout(offset_row)
 
         self.state_label = QLabel("")
         self.state_label.setWordWrap(True)
@@ -1785,6 +1797,8 @@ class DiaryPrintDialog(QDialog):
         state = self.db.get_case_print_state(self.case_id)
         mode = self.mode_combo.currentData()
         records = self.db.get_diary_records_for_case(self.patient_id, self.case_id, only_unprinted=False)
+        custom_offset_mm = int(state[4] or 0)
+        custom_last_print = state[5]
 
         self.records_list.clear()
         for record in records:
@@ -1807,6 +1821,10 @@ class DiaryPrintDialog(QDialog):
             self.records_list.addItem(item)
 
         last_print = state[2]
+        self.offset_label.setVisible(mode == "selected_from_offset")
+        self.offset_spin.setVisible(mode == "selected_from_offset")
+        if mode == "selected_from_offset":
+            self.offset_spin.setValue(custom_offset_mm)
         if last_print:
             last_print = last_print[:16].replace("T", " ")
             if mode == "reprint":
@@ -1819,6 +1837,18 @@ class DiaryPrintDialog(QDialog):
                     f"Последняя печать записей: {last_print}. "
                     "Выбранные записи будут собраны с начала нового листа."
                 )
+            elif mode == "selected_from_offset":
+                custom_part = ""
+                if custom_last_print:
+                    custom_part = (
+                        f" Последняя печать от границы: {custom_last_print[:16].replace('T', ' ')} "
+                        f"(отступ {custom_offset_mm} мм)."
+                    )
+                text = (
+                    f"Последняя печать записей: {last_print}. "
+                    f"Выбранные записи будут напечатаны от указанной границы на первой странице."
+                    f"{custom_part}"
+                )
             else:
                 text = (
                     f"Последняя печать записей: {last_print}. "
@@ -1826,7 +1856,13 @@ class DiaryPrintDialog(QDialog):
                 )
             self.state_label.setText(text)
         else:
-            self.state_label.setText("Ранее записи по этой истории не отмечались как напечатанные.")
+            if mode == "selected_from_offset" and custom_last_print:
+                self.state_label.setText(
+                    f"Последняя печать от границы: {custom_last_print[:16].replace('T', ' ')} "
+                    f"(отступ {custom_offset_mm} мм)."
+                )
+            else:
+                self.state_label.setText("Ранее записи по этой истории не отмечались как напечатанные.")
 
         if mode == "reprint":
             self.hint_label.setText(
@@ -1835,6 +1871,11 @@ class DiaryPrintDialog(QDialog):
         elif mode == "selected_new_page":
             self.hint_label.setText(
                 "Выберите нужные записи галочками. Они будут напечатаны с начала нового листа без скрытых пустых мест."
+            )
+        elif mode == "selected_from_offset":
+            self.hint_label.setText(
+                "Выберите нужные записи галочками. Они будут напечатаны с указанной высоты на первой странице. "
+                "Последнее значение отступа запоминается для этой истории."
             )
         elif mode == "new":
             self.hint_label.setText(
@@ -1866,14 +1907,21 @@ class DiaryPrintDialog(QDialog):
 
         visible_ids = {record[0] for record in visible_records}
         mode = self.mode_combo.currentData()
+        top_offset_mm = 0
         if mode == "selected_new_page":
+            html_content = self.build_print_html(visible_records, visible_ids)
+        elif mode == "selected_from_offset":
+            top_offset_mm = self.offset_spin.value()
             html_content = self.build_print_html(visible_records, visible_ids)
         else:
             html_content = self.build_print_html(all_records, visible_ids)
 
         printer = QPrinter(QPrinter.HighResolution)
         printer.setPageSize(QPageSize(QPageSize.A4))
-        printer.setPageMargins(QMarginsF(15, 20, 15, 20), QPageLayout.Millimeter)
+        if mode == "selected_from_offset":
+            printer.setPageMargins(QMarginsF(15, top_offset_mm, 15, 20), QPageLayout.Millimeter)
+        else:
+            printer.setPageMargins(QMarginsF(15, 20, 15, 20), QPageLayout.Millimeter)
 
         preview = QPrintPreviewDialog(printer, self)
         preview.setWindowTitle("Предварительный просмотр записей")
@@ -1886,6 +1934,11 @@ class DiaryPrintDialog(QDialog):
 
         preview.paintRequested.connect(handle_paint)
         preview.exec()
+
+        if self.mode_combo.currentData() == "selected_from_offset":
+            self.db.update_case_custom_print_state(self.case_id, top_offset_mm, printed_at=datetime.now().isoformat())
+            self.refresh_records()
+            return
 
         if self.mode_combo.currentData() in ("reprint", "selected_new_page"):
             return
@@ -1907,7 +1960,7 @@ class DiaryPrintDialog(QDialog):
         QMessageBox.information(self, "Готово", "Видимые записи отмечены как напечатанные.")
         self.refresh_records()
 
-    def build_print_html(self, records, visible_ids):
+    def build_print_html(self, records, visible_ids, first_page_top_offset_mm=0):
         grouped = {}
         ordered_dates = []
         for record in records:
