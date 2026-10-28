@@ -243,6 +243,57 @@ export interface ExamDraft {
   base: ExamData;
 }
 
+/** Discharge form in 2.9's payload keys, plus destination/workplace that 2.9 kept only in its HTML. */
+export interface DischargeForm {
+  discharge_date: string;
+  discharge_time: string;
+  destination: string;
+  workplace: string;
+  outcome: string;
+  final_diagnosis: string;
+  epicrisis: string;
+  recommendations: string;
+  vis_od: string; vis_os: string;
+  vis_correction_od: string; vis_correction_os: string;
+  vis_od_corr: string; vis_os_corr: string;
+  vis_od_result: string; vis_os_result: string;
+  vgd_od: string; vgd_os: string;
+  vgd_od_max: string; vgd_od_min: string; vgd_os_max: string; vgd_os_min: string;
+  elasto_od: string; elasto_os: string;
+  tono_od_ro: string; tono_od_c: string; tono_od_kb: string; tono_od_f: string;
+  tono_os_ro: string; tono_os_c: string; tono_os_kb: string; tono_os_f: string;
+  treatment_summary: string;
+  sig_dep_chief: boolean;
+  sig_chief: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  discharge_local: Record<string, Record<string, any>>;
+}
+
+export interface DischargeDraft {
+  case: {
+    id: string; number: string; medCard: string; status: CaseCard["status"]; admittedAt: string | null; dischargedAt: string | null;
+    patient: string; dob: string | null; address: string; dxAdmission: string; dxClinical: string; dxComorbid: string;
+  };
+  saved: boolean;
+  form: DischargeForm;
+  sources: {
+    admissionVision: Partial<DischargeForm> | null;
+    dischargeVisionFrom: string | null;
+    localFrom: string | null;
+    complaints: string;
+    lastDiary: { date: string; od: string; os: string; ou: string } | null;
+    studies: { id: string; line: string }[];
+    recentRecommendations: { text: string; dx: string }[];
+    recentDestinations: string[];
+  };
+  options: {
+    outcomes: string[];
+    local: Record<string, string[] | null>;
+    anterior: { depth: string[]; fluid: string[] };
+    anteriorRow: string;
+  };
+}
+
 export class ApiError extends Error {}
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -308,6 +359,18 @@ export const api = {
   },
   saveTemplate: (name: string, keywords: string, data: ExamData) =>
     request<{ id: string }>("POST", "/api/exam-templates", { name, keywords, data }),
+  discharge: (caseId: string) => get<DischargeDraft>(`/api/cases/${encodeURIComponent(caseId)}/discharge`),
+  saveDischarge: (caseId: string, f: DischargeForm) =>
+    request<{ id: string }>("PUT", `/api/cases/${encodeURIComponent(caseId)}/discharge`, f),
+  dischargePages: (caseId: string) => get<{ pages: number }>(`/api/cases/${encodeURIComponent(caseId)}/discharge/pages`),
+  dischargePageUrl: (caseId: string, page: number, stamp: number, dpi?: number) =>
+    `/api/cases/${encodeURIComponent(caseId)}/discharge/pages/${page}.png?v=${stamp}${dpi ? `&dpi=${dpi}` : ""}`,
+  dischargePdfUrl: (caseId: string) => `/api/cases/${encodeURIComponent(caseId)}/discharge/pdf`,
+  printDischarge: (caseId: string, printer: string, copies: number) =>
+    request<{ ok: true }>("POST", `/api/cases/${encodeURIComponent(caseId)}/discharge/print`, { printer, copies }),
+  archive: (caseId: string) => request<{ ok: true }>("POST", `/api/cases/${encodeURIComponent(caseId)}/archive`),
+  unarchive: (caseId: string) => request<{ ok: true }>("POST", `/api/cases/${encodeURIComponent(caseId)}/unarchive`),
+  reopen: (caseId: string) => request<{ ok: true }>("POST", `/api/cases/${encodeURIComponent(caseId)}/reopen`),
   settings: () => get<Settings>("/api/settings"),
   saveSettings: (s: Settings) => request<Settings>("PUT", "/api/settings", s),
 };

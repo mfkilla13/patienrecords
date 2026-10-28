@@ -161,7 +161,13 @@ export function DepartmentPage() {
                   </td>
                   <td>
                     {p.stage === "discharged" ? (
-                      <span className="muted">—</span>
+                      <button type="button" className="btn small" onClick={(e) => {
+                        e.stopPropagation();
+                        if (!window.confirm(`Перенести историю № ${p.number} (${p.surname}) в архив?`)) return;
+                        api.archive(p.caseId).then(() => api.department().then(setData), (err: Error) => window.alert(err.message));
+                      }}>
+                        В архив
+                      </button>
                     ) : p.diaryToday ? (
                       <span className="dep-done">
                         <span className="dep-check" aria-hidden="true">✓</span>Написан

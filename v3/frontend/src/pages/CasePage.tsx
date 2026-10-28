@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, CaseCard, RecordView, Step } from "../api";
 import { VisionFractions } from "../components/VisionFractions";
 import { fullDate, initials, plural, recordDate, shortDate } from "../format";
@@ -135,6 +135,7 @@ function RecordCard({ r, caseId, active }: { r: RecordView; caseId: string; acti
 
 export function CasePage() {
   const { caseId = "" } = useParams();
+  const navigate = useNavigate();
   const [card, setCard] = useState<CaseCard | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("records");
@@ -167,6 +168,21 @@ export function CasePage() {
 
   const p = card.patient;
   const fio = [p.surname, p.name, p.patronymic].filter(Boolean).join(" ");
+  const statusAction = async (action: "archive" | "unarchive" | "reopen") => {
+    const ask = {
+      archive: `Перенести историю № ${card.number} в архив?`,
+      unarchive: "",
+      reopen: "Отменить выписку? Пациент снова будет в отделении, заполненная выписка сохранится.",
+    }[action];
+    if (ask && !window.confirm(ask)) return;
+    try {
+      await api[action](card.caseId);
+      if (action === "archive") navigate("/");
+      else setCard(await api.caseCard(card.caseId));
+    } catch (e) {
+      window.alert((e as Error).message);
+    }
+  };
   const active = card.status === "active";
   const counts: Record<Tab, number | string> = {
     records: card.records.length,
@@ -215,10 +231,21 @@ export function CasePage() {
                 <Link to={`/case/${card.caseId}/diary`} className="btn primary">Дневник за сегодня</Link>
               </>
             ) : (
-              <span className={"pill " + (card.status === "archived" ? "tone-neutral" : "tone-green")}>
-                {card.status === "archived" ? "В архиве" : "Выписан(а)"} {card.dischargedAt && fullDate(card.dischargedAt)}
-                {card.outcome && ` · ${card.outcome}`}
-              </span>
+              <>
+                <span className={"pill " + (card.status === "archived" ? "tone-neutral" : "tone-green")}>
+                  {card.status === "archived" ? "В архиве" : "Выписан(а)"} {card.dischargedAt && fullDate(card.dischargedAt)}
+                  {card.outcome && ` · ${card.outcome}`}
+                </span>
+                {card.status === "discharged" && (
+                  <button type="button" className="btn" onClick={() => statusAction("reopen")}>Отменить выписку</button>
+                )}
+                {card.status === "archived" ? (
+                  <button type="button" className="btn" onClick={() => statusAction("unarchive")}>Вернуть из архива</button>
+                ) : (
+                  <button type="button" className="btn" onClick={() => statusAction("archive")}>В архив</button>
+                )}
+                <Link to={`/case/${card.caseId}/discharge`} className="btn primary">Выписка</Link>
+              </>
             )}
           </div>
         </div>

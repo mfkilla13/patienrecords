@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, admission, clinical, diaries, exams, printjobs, settings
+from . import __version__, admission, clinical, diaries, discharge, dischargeprint, exams, printjobs, settings
 from . import db as store
 
 class PrintJobIn(BaseModel):
@@ -28,6 +28,11 @@ class PrintJobIn(BaseModel):
 
 class PrintIn(BaseModel):
     printer: str
+
+
+class DischargePrintIn(BaseModel):
+    printer: str
+    copies: int = 1
 
 
 class ExamIn(BaseModel):
@@ -318,6 +323,56 @@ def create_app(db_path: Path | None = None) -> FastAPI:
     @app.delete("/api/exam-templates/{template_id}")
     def delete_template(template_id: str):
         exams.delete_template(conn, template_id)
+        return {"ok": True}
+
+    def _dis(fn, *args, **kw):
+        return _call(discharge.DischargeError, fn, *args, **kw)
+
+    @app.get("/api/cases/{case_id}/discharge")
+    def get_discharge(case_id: str):
+        return _dis(discharge.draft, case_id)
+
+    @app.put("/api/cases/{case_id}/discharge")
+    def put_discharge(case_id: str, body: discharge.DischargeIn):
+        return {"id": _dis(discharge.save, case_id, body)}
+
+    @app.get("/api/cases/{case_id}/discharge/pdf")
+    def get_discharge_pdf(case_id: str):
+        return Response(_dis(dischargeprint.pdf, case_id), media_type="application/pdf",
+                        headers={"Content-Disposition": f'inline; filename="vypiska-{case_id[:8]}.pdf"'})
+
+    @app.get("/api/cases/{case_id}/discharge/pages/{page}.png")
+    def get_discharge_page(case_id: str, page: int, dpi: int = 110):
+        png, count = _dis(dischargeprint.preview_png, case_id, page, max(60, min(dpi, 220)))
+        return Response(png, media_type="image/png", headers={"X-Page-Count": str(count), "Cache-Control": "no-store"})
+
+    @app.get("/api/cases/{case_id}/discharge/pages")
+    def get_discharge_pages(case_id: str):
+        return {"pages": _dis(dischargeprint.pages, case_id)}
+
+    @app.post("/api/cases/{case_id}/discharge/print")
+    def post_discharge_print(case_id: str, body: DischargePrintIn):
+        try:
+            _dis(dischargeprint.send, case_id, body.printer, body.copies)
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(502, f"Принтер не принял задание: {e}")
+        return {"ok": True}
+
+    @app.post("/api/cases/{case_id}/archive")
+    def post_archive(case_id: str):
+        _dis(discharge.archive, case_id)
+        return {"ok": True}
+
+    @app.post("/api/cases/{case_id}/unarchive")
+    def post_unarchive(case_id: str):
+        _dis(discharge.unarchive, case_id)
+        return {"ok": True}
+
+    @app.post("/api/cases/{case_id}/reopen")
+    def post_reopen(case_id: str):
+        _dis(discharge.reopen, case_id)
         return {"ok": True}
 
     @app.get("/api/settings")

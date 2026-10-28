@@ -2,6 +2,7 @@ import { NavLink, Route, Routes } from "react-router-dom";
 import { AdmissionPage } from "./pages/AdmissionPage";
 import { CasePage } from "./pages/CasePage";
 import { ExamPage } from "./pages/ExamPage";
+import { DischargePage } from "./pages/DischargePage";
 import { DepartmentPage } from "./pages/DepartmentPage";
 import { DiaryPage } from "./pages/DiaryPage";
 import { PrintPage } from "./pages/PrintPage";
@@ -44,7 +45,7 @@ export function App() {
         <Route path="/case/:caseId/diary/:recordId" element={<DiaryPage />} />
         <Route path="/case/:caseId/new" element={<PlaceholderPage title="Новая запись" />} />
         <Route path="/case/:caseId/print" element={<PrintPage />} />
-        <Route path="/case/:caseId/discharge" element={<PlaceholderPage title="Выписка" />} />
+        <Route path="/case/:caseId/discharge" element={<DischargePage />} />
         <Route path="/admission" element={<AdmissionPage />} />
         <Route path="/case/:caseId/exam" element={<ExamPage />} />
         <Route path="/round" element={<RoundPage />} />
