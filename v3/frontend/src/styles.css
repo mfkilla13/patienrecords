@@ -1,0 +1,84 @@
+/* Design tokens of the «Мягкий» style. */
+:root {
+  --bg: #f7f5f2;
+  --surface: #ffffff;
+  --text: #1d1f1c;
+  --text-2: #3a3a35;
+  --text-3: #4a4a44;
+  --muted: #5e5e57;
+  --line: #f0ece6;
+  --dash: #b9b4aa;
+  --chip: #f2efea;
+  --nav: #ede9e3;
+  --accent: #2e6b4f;
+  --accent-hover: #1f4d38;
+  --accent-soft: #dcebe2;
+  --accent-tint: #eaf3ee;
+  --amber-bg: #fcefd9;
+  --amber-strong: #f6d8a8;
+  --amber-text: #5c3300;
+  --blue-bg: #e7eef5;
+  --blue-text: #2a4763;
+  --violet-bg: #ede6f3;
+  --violet-text: #4b3566;
+  --brown-bg: #f6e4d3;
+  --brown-text: #6b3a12;
+  --shadow-card: 0 1px 2px rgba(40, 30, 20, 0.05), 0 8px 24px rgba(40, 30, 20, 0.06);
+  --shadow-pill: 0 1px 3px rgba(40, 30, 20, 0.12);
+  --radius-card: 24px;
+  font-family: "Onest", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); }
+a { color: var(--accent); }
+a:hover { color: var(--accent-hover); }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.page { max-width: 1360px; margin: 0 auto; padding: 0 24px; }
+
+/* Top bar */
+.topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; padding-top: 16px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; }
+.brand-mark { width: 34px; height: 34px; border-radius: 50%; background: var(--accent); display: inline-flex; align-items: center; justify-content: center; }
+.mainnav { display: flex; gap: 4px; background: var(--nav); padding: 4px; border-radius: 999px; flex-wrap: wrap; }
+.mainnav a { padding: 8px 18px; border-radius: 999px; color: var(--text-3); text-decoration: none; }
+.mainnav a.active { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: var(--shadow-pill); }
+.today { color: var(--muted); margin-left: auto; }
+
+/* Building blocks */
+.card { background: var(--surface); border-radius: var(--radius-card); box-shadow: var(--shadow-card); }
+.btn { height: 48px; padding: 0 22px; border-radius: 999px; border: none; background: var(--chip); color: var(--text); font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; white-space: nowrap; }
+.btn:hover { color: var(--text); filter: brightness(0.97); }
+.btn.primary { background: var(--accent); color: #fff; }
+.btn.primary:hover { background: var(--accent-hover); color: #fff; }
+.btn.white { background: var(--surface); box-shadow: var(--shadow-pill); }
+.btn.small { height: 36px; padding: 0 16px; font-size: 14px; }
+.count-badge { background: var(--nav); border-radius: 999px; padding: 2px 12px; font-weight: 600; color: var(--text-3); }
+.pill { display: inline-flex; align-items: center; font-size: 14px; font-weight: 600; border-radius: 999px; padding: 4px 12px; white-space: nowrap; }
+.pill.sm { font-size: 12px; padding: 1px 8px; font-weight: 700; }
+.tone-green { background: var(--accent-soft); color: var(--accent-hover); }
+.tone-tint { background: var(--accent-tint); color: var(--accent-hover); }
+.tone-amber { background: var(--amber-bg); color: var(--amber-text); }
+.tone-blue { background: var(--blue-bg); color: var(--blue-text); }
+.tone-violet { background: var(--violet-bg); color: var(--violet-text); }
+.tone-brown { background: var(--brown-bg); color: var(--brown-text); }
+.tone-neutral { background: var(--chip); color: var(--text-3); }
+.tone-dark { background: var(--text); color: #fff; }
+.muted { color: var(--muted); }
+.search { display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 18px; background: var(--bg); border-radius: 999px; }
+.search input { border: none; outline: none; background: transparent; flex: 1; min-width: 0; font-size: 15px; }
+.avatar { flex: none; width: 38px; height: 38px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Ophthalmic fraction: OD over OS */
+.frac { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.2; }
+.frac > span { padding: 1px 4px; min-height: 1.2em; }
+.frac > span:first-child { border-bottom: 1px solid currentColor; }
+.vision { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 28px; }
+.vision-item { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }

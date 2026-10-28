@@ -1,0 +1,370 @@
+"""HTTP API used by the UI (desktop window now, phone later)."""
+
+from __future__ import annotations
+
+import re
+import sqlite3
+from datetime import date
+from pathlib import Path
+
+from html import escape
+
+from fastapi import FastAPI, HTTPException, Response
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+
+from . import __version__, admission, clinical, diaries, exams, printjobs, settings
+from . import db as store
+
+class PrintJobIn(BaseModel):
+    recordIds: list[str]
+    kind: str = "sheet"             # sheet (new + reprint in place) | copy (one after another, nothing marked)
+    mode: str = "continue"          # where unprinted records go: continue | new | manual
+    startMm: float | None = None
+    handwrittenTo: float | None = None   # «на листе есть запись от руки до N мм»
+    handwrittenSheet: int | None = None  # the sheet where that handwriting ends (it may run over)
+
+
+class PrintIn(BaseModel):
+    printer: str
+
+
+class ExamIn(BaseModel):
+    data: dict
+    templateId: str | None = None
+
+
+FRONTEND_DIST =Path(__file__).resolve().parents[2] / "frontend" / "dist"
+PRINTABLE_KINDS = ("primary_exam", "diary", "operation_protocol")
+_EYE = re.compile(r"\b(OD|OS|OU)\b")
+
+
+def _age(dob: str | None, today: date) -> int | None:
+    if not dob:
+        return None
+    y, m, d = (int(x) for x in dob.split("-"))
+    return today.year - y - ((today.month, today.day) < (m, d))
+
+
+def _day_of_stay(admitted_at: str | None, discharged_at: str | None, today: date) -> int | None:
+    if not admitted_at:
+        return None
+    start = date.fromisoformat(admitted_at[:10])
+    end = date.fromisoformat(discharged_at[:10]) if discharged_at else today
+    return (end - start).days + 1
+
+
+def _stage(status: str, operated: bool) -> str:
+    if status == "discharged":
+        return "discharged"
+    return "post_op" if operated else "exam"
+
+
+def department(conn: sqlite3.Connection, today: date | None = None) -> dict:
+    today = today or date.today()
+    rows = conn.execute(
+        """
+        SELECT c.id, c.number, c.status, c.admitted_at, c.discharged_at,
+               c.dx_final, c.dx_clinical, c.dx_admission,
+               p.surname, p.name, p.patronymic, p.dob,
+               EXISTS (SELECT 1 FROM records r WHERE r.case_id = c.id AND r.deleted_at IS NULL
+                       AND r.kind = 'operation_protocol') AS operated,
+               EXISTS (SELECT 1 FROM records r WHERE r.case_id = c.id AND r.deleted_at IS NULL
+                       AND r.kind = 'diary' AND substr(r.recorded_at, 1, 10) = :today) AS diary_today,
+               (SELECT COUNT(*) FROM records r WHERE r.case_id = c.id AND r.deleted_at IS NULL
+                       AND r.kind IN ('primary_exam', 'diary', 'operation_protocol')
+                       AND r.printed_at IS NULL) AS unprinted
+        FROM cases c JOIN patients p ON p.id = c.patient_id
+        WHERE c.deleted_at IS NULL AND c.status IN ('active', 'discharged')
+        """,
+        {"today": today.isoformat()},
+    ).fetchall()
+
+    patients = []
+    for r in rows:
+        dx = r["dx_final"] or r["dx_clinical"] or r["dx_admission"]
+        eyes = set(_EYE.findall(dx))
+        # A single tag only when the diagnosis names one eye; "OD … OS …" would be misleading.
+        eye = eyes.pop() if len(eyes) == 1 else None
+        patients.append({
+            "caseId": r["id"],
+            "number": r["number"],
+            "surname": r["surname"],
+            "name": r["name"],
+            "patronymic": r["patronymic"],
+            "age": _age(r["dob"], today),
+            "diagnosis": dx,
+            "eye": eye,
+            "admittedAt": r["admitted_at"],
+            "day": _day_of_stay(r["admitted_at"], r["discharged_at"], today),
+            "stage": _stage(r["status"], bool(r["operated"])),
+            "diaryToday": bool(r["diary_today"]),
+            "unprinted": r["unprinted"],
+        })
+    patients.sort(key=lambda x: (int(x["number"]) if x["number"].isdigit() else 0, x["number"]))
+    return {
+        "today": today.isoformat(),
+        "patients": patients,
+        "counts": {
+            "all": len(patients),
+            "noDiary": sum(1 for p in patients if not p["diaryToday"] and p["stage"] != "discharged"),
+            "unprinted": sum(1 for p in patients if p["unprinted"]),
+            "discharged": sum(1 for p in patients if p["stage"] == "discharged"),
+        },
+    }
+
+
+def case_card(conn: sqlite3.Connection, case_id: str, today: date | None = None) -> dict | None:
+    today = today or date.today()
+    c = conn.execute(
+        "SELECT c.*, p.surname, p.name, p.patronymic, p.dob, p.city, p.street, p.house"
+        " FROM cases c JOIN patients p ON p.id = c.patient_id WHERE c.id = ? AND c.deleted_at IS NULL",
+        (case_id,),
+    ).fetchone()
+    if c is None:
+        return None
+    rows = conn.execute(
+        "SELECT * FROM records WHERE case_id = ? AND deleted_at IS NULL ORDER BY recorded_at DESC",
+        (case_id,),
+    ).fetchall()
+    records = [clinical.record_view(r) for r in rows if r["kind"] != "passport"]
+    studies = [clinical.study_view(s) for s in conn.execute(
+        "SELECT * FROM studies WHERE case_id = ? AND deleted_at IS NULL ORDER BY study_date DESC", (case_id,))]
+    prescriptions = [dict(p) for p in conn.execute(
+        "SELECT id, category, name, method, freq, date_from, date_to FROM prescriptions"
+        " WHERE case_id = ? AND deleted_at IS NULL ORDER BY date_from", (case_id,))]
+    print_state = conn.execute("SELECT sheet, used_mm, last_printed_at FROM print_state WHERE case_id = ?",
+                               (case_id,)).fetchone()
+
+    latest_vision = next(({"at": r["recordedAt"], "eyes": r["vision"]} for r in records if r["vision"]), None)
+    exam = next((r for r in records if r["kind"] == "primary_exam"), None)
+    operations = [r for r in records if r["kind"] == "operation_protocol"]
+    planned = []
+    if exam:
+        planned = next((s["text"].split(", ") for s in exam["sections"] if s["label"] == "План обследования"), [])
+    diary_today = any(r["kind"] == "diary" and r["recordedAt"][:10] == today.isoformat() for r in records)
+    dx = c["dx_final"] or c["dx_clinical"] or c["dx_admission"]
+
+    steps = [
+        {"key": "admission", "title": "Поступление", "sub": c["admitted_at"] or "", "state": "done"},
+        {"key": "exam", "title": "Первичный осмотр", "sub": "заполнен" if exam else "не заполнен",
+         "state": "done" if exam else "now"},
+        {"key": "studies", "title": "Обследования",
+         "sub": f"{len(studies)} из {len(planned)}" if planned else f"{len(studies)}",
+         "state": "done" if studies and len(studies) >= len(planned) else ("now" if exam else "todo")},
+        {"key": "operation", "title": "Операция",
+         "sub": operations[0]["recordedAt"] if operations else "не было",
+         "state": "done" if operations else "todo"},
+        {"key": "diaries", "title": "Дневники",
+         "sub": "сегодня написан" if diary_today else "сегодня нет",
+         "state": "done" if c["status"] != "active" else ("done" if diary_today else "now")},
+        {"key": "discharge", "title": "Выписка", "sub": c["discharged_at"] or "—",
+         "state": "done" if c["status"] != "active" else "todo"},
+    ]
+
+    return {
+        "caseId": c["id"],
+        "number": c["number"],
+        "medCard": c["med_card"],
+        "status": c["status"],
+        "outcome": c["outcome"],
+        "admittedAt": c["admitted_at"],
+        "dischargedAt": c["discharged_at"],
+        "day": _day_of_stay(c["admitted_at"], c["discharged_at"], today),
+        "patient": {
+            "surname": c["surname"], "name": c["name"], "patronymic": c["patronymic"],
+            "dob": c["dob"], "age": _age(c["dob"], today),
+            "address": ", ".join(x for x in [c["city"], c["street"], c["house"]] if x),
+        },
+        "diagnosis": {"main": dx, "admission": c["dx_admission"], "clinical": c["dx_clinical"],
+                      "final": c["dx_final"], "comorbid": c["dx_comorbid"]},
+        "latestVision": latest_vision,
+        "steps": steps,
+        "records": records,
+        "studies": studies,
+        "prescriptions": prescriptions,
+        "unprinted": sum(1 for r in records if r["kind"] in PRINTABLE_KINDS and not r["printedAt"]),
+        "printState": dict(print_state) if print_state else None,
+    }
+
+
+# Old printouts are shown in a sandboxed frame; this policy also blocks scripts and remote loads.
+LEGACY_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:"
+
+
+def create_app(db_path: Path | None = None) -> FastAPI:
+    conn = store.connect(db_path)
+    app = FastAPI(title="MedQT", version=__version__)
+
+    @app.get("/api/health")
+    def health():
+        return {"ok": True, "version": __version__}
+
+    @app.get("/api/department")
+    def get_department():
+        return department(conn)
+
+    @app.get("/api/cases/{case_id}")
+    def get_case(case_id: str):
+        card = case_card(conn, case_id)
+        if card is None:
+            raise HTTPException(404, "История не найдена")
+        return card
+
+    def _diary_call(fn, *args):
+        try:
+            return fn(conn, *args)
+        except diaries.DiaryError as e:
+            raise HTTPException(e.status, e.message)
+
+    @app.get("/api/cases/{case_id}/diary-draft")
+    def get_diary_draft(case_id: str, day: str | None = None):
+        return _diary_call(diaries.draft, case_id, day or date.today().isoformat())
+
+    @app.post("/api/cases/{case_id}/diaries", status_code=201)
+    def post_diary(case_id: str, body: diaries.DiaryIn):
+        return {"id": _diary_call(diaries.create, case_id, body)}
+
+    @app.get("/api/diaries/{record_id}")
+    def get_diary(record_id: str):
+        return _diary_call(diaries.get, record_id)
+
+    @app.put("/api/diaries/{record_id}")
+    def put_diary(record_id: str, body: diaries.DiaryIn):
+        _diary_call(diaries.update, record_id, body)
+        return {"id": record_id}
+
+    @app.get("/api/round")
+    def get_round(day: str | None = None):
+        day = day or date.today().isoformat()
+        return {"day": day, "rows": diaries.round_rows(conn, day)}
+
+    def _print_call(fn, *args, **kw):
+        try:
+            return fn(conn, *args, **kw)
+        except printjobs.PrintError as e:
+            raise HTTPException(e.status, e.message)
+
+    @app.get("/api/cases/{case_id}/print-plan")
+    def get_print_plan(case_id: str):
+        return _print_call(printjobs.plan, case_id)
+
+    @app.post("/api/cases/{case_id}/print-jobs", status_code=201)
+    def post_print_job(case_id: str, body: PrintJobIn):
+        return _print_call(printjobs.create_job, case_id, body.recordIds, body.mode, body.startMm, body.kind,
+                           body.handwrittenTo, body.handwrittenSheet)
+
+    @app.get("/api/print-jobs/{job_id}/pages/{page}.png")
+    def get_print_preview(job_id: str, page: int, dpi: int = 110):
+        dpi = max(60, min(dpi, 220))
+        return Response(_print_call(printjobs.preview_png, job_id, page, dpi), media_type="image/png")
+
+    @app.get("/api/print-jobs/{job_id}/pdf")
+    def get_print_pdf(job_id: str):
+        return Response(_print_call(printjobs.pdf, job_id), media_type="application/pdf",
+                        headers={"Content-Disposition": f'inline; filename="medqt-{job_id[:8]}.pdf"'})
+
+    @app.get("/api/printers")
+    def get_printers():
+        from . import winprint
+        try:
+            found = winprint.printers()
+        except Exception as e:  # pywin32 missing or no spooler
+            return {"printers": [], "default": None, "error": str(e)}
+        chosen = settings.get(conn)["default_printer"]
+        if chosen and chosen in found["printers"]:
+            found["default"] = chosen   # the printer picked in settings wins over the Windows default
+        return found
+
+    def _call(errors, fn, *args, **kw):
+        try:
+            return fn(conn, *args, **kw)
+        except errors as e:
+            raise HTTPException(e.status, e.message)
+
+    @app.get("/api/dictionaries")
+    def get_dictionaries():
+        return admission.dictionaries(conn)
+
+    @app.get("/api/patients/search")
+    def get_patient_search(q: str = ""):
+        return admission.search(conn, q)
+
+    @app.post("/api/admissions", status_code=201)
+    def post_admission(body: admission.AdmissionIn):
+        return _call(admission.AdmissionError, admission.admit, body)
+
+    @app.get("/api/cases/{case_id}/exam-draft")
+    def get_exam_draft(case_id: str):
+        return _call(exams.ExamError, exams.draft, case_id)
+
+    @app.post("/api/cases/{case_id}/exam", status_code=201)
+    def post_exam(case_id: str, body: ExamIn):
+        return _call(exams.ExamError, exams.save, case_id, body.data, None, body.templateId)
+
+    @app.put("/api/cases/{case_id}/exam/{record_id}")
+    def put_exam(case_id: str, record_id: str, body: ExamIn):
+        return _call(exams.ExamError, exams.save, case_id, body.data, record_id, body.templateId)
+
+    @app.post("/api/exam-preview", response_class=HTMLResponse)
+    def post_exam_preview(body: ExamIn):
+        return HTMLResponse(exams.preview_html(conn, body.data), headers={"Content-Security-Policy": LEGACY_CSP})
+
+    @app.post("/api/exam-templates", status_code=201)
+    def post_template(body: exams.TemplateIn):
+        return exams.save_template(conn, body)
+
+    @app.delete("/api/exam-templates/{template_id}")
+    def delete_template(template_id: str):
+        exams.delete_template(conn, template_id)
+        return {"ok": True}
+
+    @app.get("/api/settings")
+    def get_settings():
+        return settings.get(conn)
+
+    @app.put("/api/settings")
+    def put_settings(body: settings.SettingsIn):
+        return settings.put(conn, body)
+
+    @app.post("/api/print-jobs/{job_id}/print")
+    def post_print(job_id: str, body: PrintIn):
+        try:
+            _print_call(printjobs.send_to_printer, job_id, body.printer)
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(502, f"Принтер не принял задание: {e}")
+        return {"ok": True}
+
+    @app.post("/api/print-jobs/{job_id}/confirm")
+    def post_confirm(job_id: str):
+        return _print_call(printjobs.confirm, job_id)
+
+    @app.post("/api/print-jobs/{job_id}/cancel")
+    def post_cancel(job_id: str):
+        _print_call(printjobs.cancel, job_id)
+        return {"ok": True}
+
+    @app.get("/api/records/{record_id}/legacy", response_class=HTMLResponse)
+    def get_legacy_html(record_id: str):
+        row = conn.execute("SELECT kind, html_legacy FROM records WHERE id = ?", (record_id,)).fetchone()
+        if row is None or not row["html_legacy"]:
+            raise HTTPException(404, "Нет сохранённого текста")
+        html = row["html_legacy"]
+        if row["kind"] in ("passport", "other") and "<" not in html:
+            html = "<pre style='font: 14px/1.5 sans-serif; white-space: pre-wrap'>" + escape(html) + "</pre>"
+        return HTMLResponse(html, headers={"Content-Security-Policy": LEGACY_CSP})
+
+    if FRONTEND_DIST.exists():
+        app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
+
+        @app.get("/{path:path}", include_in_schema=False)
+        def spa(path: str):
+            file = FRONTEND_DIST / path
+            if path and file.is_file():
+                return FileResponse(file)
+            return FileResponse(FRONTEND_DIST / "index.html")
+
+    return app

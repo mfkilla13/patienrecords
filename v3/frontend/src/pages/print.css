@@ -1,0 +1,71 @@
+.pr-overlay { position: fixed; inset: 0; background: rgba(40, 34, 26, 0.45); overflow: auto; padding: 32px 24px; display: flex; justify-content: center; align-items: flex-start; z-index: 10; }
+.pr-dialog { background: #fff; border-radius: 28px; width: 100%; max-width: 1180px; box-shadow: 0 30px 80px rgba(40, 30, 20, 0.3); display: flex; flex-direction: column; }
+.pr-head { display: flex; align-items: center; gap: 14px; padding: 22px 28px 14px; }
+.pr-head h1 { margin: 0; font-size: 24px; font-weight: 700; }
+.pr-icon { width: 48px; height: 48px; border-radius: 50%; background: var(--amber-bg); color: var(--amber-text); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+
+.pr-body { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 12px 12px; }
+/* min-width: 0 lets long record lines shrink (ellipsis) instead of pushing the preview below the list. */
+.pr-left { flex: 1 1 420px; min-width: 0; padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 20px; }
+/* A fieldset refuses to shrink below its longest line by default (min-inline-size: min-content),
+   which pushed the records under the preview. */
+.pr-fs { border: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; min-inline-size: 0; }
+.pr-fs legend { font-weight: 700; font-size: 17px; margin-bottom: 10px; padding: 0; display: flex; align-items: center; gap: 10px; }
+.pr-num { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; }
+
+.pr-rec { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 6px 16px; border-radius: 18px; background: var(--bg); cursor: pointer; }
+.pr-rec.on { background: #fff; box-shadow: inset 0 0 0 1.5px #e2dcd2; }
+.pr-rec.off { opacity: 0.6; cursor: default; }
+.pr-rec input, .pr-opt input[type="radio"] { width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
+.pr-rec-text { flex: 1; display: flex; flex-direction: column; line-height: 1.35; min-width: 0; }
+/* Wrap the record summary (up to two lines) instead of hiding it. */
+.pr-rec-text .muted { font-size: 13px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.pr-rec .pill { flex: none; }
+
+.pr-opt { display: flex; gap: 12px; align-items: flex-start; padding: 14px 18px; border-radius: 20px; background: var(--bg); cursor: pointer; }
+.pr-opt.on { background: var(--accent-tint); box-shadow: inset 0 0 0 2px var(--accent); }
+.pr-opt > span { display: flex; flex-direction: column; gap: 2px; font-size: 14px; color: var(--text-2); }
+.pr-opt b { font-size: 15px; color: var(--text); }
+.pr-mm { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.pr-mm .in { width: 90px; height: 40px; background: #fff; }
+
+.pr-preview { flex: 1 1 440px; min-width: 0; margin: 0 4px 8px; padding: 18px 24px 20px; background: var(--chip); border-radius: 24px; display: flex; flex-direction: column; align-items: center; gap: 12px; align-self: flex-start; position: sticky; top: 0; }
+.pr-legend { display: flex; gap: 18px; font-size: 13px; color: var(--text-2); }
+.pr-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 12px; height: 12px; border-radius: 4px; display: inline-block; }
+.sw-old { background: #d9d3c9; }
+.sw-new { background: var(--text); }
+.pr-sheet { position: relative; width: 100%; max-width: 460px; cursor: zoom-in; border: none; padding: 0; background: none; }
+.pr-kind { align-self: flex-start; min-width: 320px; }
+.pr-kind-hint { margin: -10px 0 0; font-size: 14px; }
+.pr-pagebox { width: 100%; max-width: 460px; display: flex; flex-direction: column; gap: 6px; }
+.pr-insert { font-size: 14px; background: #fff; border-radius: 12px; padding: 6px 12px; }
+.pr-lightbox { position: fixed; inset: 0; z-index: 20; background: rgba(29, 31, 28, 0.75); overflow: auto; padding: 24px; display: flex; flex-direction: column; align-items: center; gap: 10px; cursor: zoom-out; }
+.pr-lightbox-sheet { position: relative; width: min(1000px, 100%); flex: none; }
+.pr-lightbox-sheet img { display: block; width: 100%; background: #fff; border-radius: 6px; }
+.pr-lightbox-hint { color: #fff; font-size: 14px; }
+.pr-page { display: block; width: 100%; background: #fff; border-radius: 6px; box-shadow: 0 2px 4px rgba(40, 30, 20, 0.08), 0 14px 34px rgba(40, 30, 20, 0.12); }
+.pr-mark { position: absolute; left: 6px; transform: translateY(-50%); background: var(--accent); color: #fff; font-size: 12px; font-weight: 600; padding: 1px 10px; border-radius: 999px; pointer-events: none; }
+.pr-zoom-hint { font-size: 12px; }
+.pr-sum { font-size: 14px; text-align: center; }
+
+.pr-banner { border-radius: 16px; padding: 10px 14px; background: var(--chip); font-size: 14px; }
+.pr-warn { background: var(--amber-bg); color: #4a2b00; }
+.pr-error { background: #f9dcd5; color: #6b1d0c; margin: 0 28px; }
+.pr-preview .pr-error { margin: 0; }
+
+.pr-foot { display: flex; align-items: center; gap: 12px; padding: 16px 28px 22px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.pr-printer { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: var(--text-3); }
+.pr-printer .in { width: 230px; height: 44px; }
+.pr-foot-note { flex: 1; font-size: 14px; min-width: 200px; }
+
+.pr-check { padding: 28px 40px 36px; display: flex; flex-direction: column; gap: 10px; }
+.pr-check-title { font-size: 22px; font-weight: 700; margin: 0; }
+.pr-check-actions { display: flex; gap: 12px; margin-top: 10px; }
+
+/* «Есть ли на листе записи от руки?» — asked before continuing a sheet. */
+.pr-hand { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding: 10px 12px; border-radius: 14px; background: #fff; }
+.pr-hand.ask { box-shadow: inset 0 0 0 2px #e8b565; background: #fff6e3; }
+.pr-hand-q { font-weight: 600; color: var(--text); }
+.pr-hand-a { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pr-hand-sheets { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; width: 100%; font-size: 13px; }
