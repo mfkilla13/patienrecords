@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, Prescription, PrescriptionList } from "../api";
+import { DocPrintDialog } from "../components/DocPrintDialog";
 import { shortDate, todayIso } from "../format";
 import "./diary.css";
 import "./exam.css";
@@ -20,6 +21,7 @@ export function PrescriptionsPage() {
   const [d, setD] = useState<Draft>(empty("drugs"));
   const [editing, setEditing] = useState<Prescription | null>(null);
   const [editTemplates, setEditTemplates] = useState(false);
+  const [printing, setPrinting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
@@ -86,10 +88,19 @@ export function PrescriptionsPage() {
         </Link>
         <h1 style={{ flex: 1 }}>Лист назначений</h1>
         <Link to={`/case/${caseId}/studies`} className="btn">Исследования</Link>
+        <button type="button" className="btn primary" disabled={list.items.length === 0} onClick={() => setPrinting(true)}>Печать листа</button>
       </div>
       {ro && <div className="dy-banner">История в архиве — назначения можно только посмотреть.</div>}
       {note && <div className="dy-banner" role="status">✓ {note}</div>}
       {error && <div className="dy-banner dy-error" role="alert">{error}</div>}
+
+      {printing && (
+        <DocPrintDialog title="Лист назначений" onClose={() => setPrinting(false)}
+          pageCount={() => api.prescriptionPages(caseId).then((r) => r.pages)}
+          pageUrl={(n, stamp) => api.prescriptionPageUrl(caseId, n, stamp)}
+          pdfUrl={api.prescriptionPdfUrl(caseId)}
+          print={(printer, copies) => api.printPrescriptions(caseId, printer, copies)} />
+      )}
 
       <div className="sd-body">
         <section className="card rx-list" aria-label="Лист назначений">

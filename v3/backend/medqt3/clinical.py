@@ -169,6 +169,12 @@ def _operation(d: dict) -> dict:
     return {"sections": sections, "title": _s(d.get("operation_name"))}
 
 
+def _text_record(d: dict) -> dict:
+    sections: list = []
+    _section(sections, "", d.get("text"))
+    return {"sections": sections, "kindLabel": _s(d.get("title")) or "Запись"}
+
+
 def _discharge(d: dict) -> dict:
     sections: list = []
     _section(sections, "Эпикриз", d.get("epicrisis"))
@@ -179,7 +185,8 @@ def _discharge(d: dict) -> dict:
 
 
 BUILDERS = {"diary": _diary, "primary_exam": _primary_exam, "operation_protocol": _operation,
-            "discharge_summary": _discharge}
+            "discharge_summary": _discharge, "other": _text_record}
+EDITABLE = ("diary", "primary_exam", "operation_protocol", "other")
 
 
 def record_view(row) -> dict:
@@ -195,7 +202,9 @@ def record_view(row) -> dict:
         "local": [],
         "title": "",
         "hasLegacyHtml": False,
-        "editable": row["kind"] in ("diary", "primary_exam") and data is not None and not row["printed_at"],
+        "editable": row["kind"] in EDITABLE and data is not None and not row["printed_at"],
+        # Goes on the diary sheet: 2.9's plain records without fields cannot be laid out.
+        "printable": row["kind"] in ("primary_exam", "diary", "operation_protocol") or (row["kind"] == "other" and data is not None),
     }
     builder = BUILDERS.get(row["kind"])
     if data is not None and builder:

@@ -162,7 +162,7 @@ def story(case: dict, f: dict, admission: dict | None, s: dict) -> list:
     return out
 
 
-def _page(case: dict, s: dict):
+def _page(case: dict, s: dict, label: str = "выписка"):
     org = [ln.strip() for ln in s["org_header"].splitlines() if ln.strip()]
 
     def draw(c, doc):
@@ -180,7 +180,7 @@ def _page(case: dict, s: dict):
             c.setFillColor("black")
         c.setFillColor(GREY)
         c.setFont(FONT, 7.5)
-        c.drawString(MARGIN_X, 10 * mm, f"{case['patient']} · выписка")
+        c.drawString(MARGIN_X, 10 * mm, f"{case['patient']} · {label}")
         c.drawRightString(PAGE_W - MARGIN_X, 10 * mm, f"стр. {doc.page}")
         c.setFillColor("black")
     return draw

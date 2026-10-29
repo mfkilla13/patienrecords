@@ -312,6 +312,16 @@ def protocol_block(data: dict, recorded_at: str, doctor: str) -> list:
     return out
 
 
+def text_block(data: dict, recorded_at: str, doctor: str) -> list:
+    """A plain record from «Новая запись» (предоперационный эпикриз, консилиум, ...): its title, then the text."""
+    out: list = [RecordHead(_record_date(data, recorded_at), (data.get("title") or "Запись").strip(), _record_time(data, recorded_at))]
+    for para in (data.get("text") or "").strip().split("\n"):
+        if para.strip():
+            out.append(_p(_esc(para)))
+    out += [SignLine(doctor or "Подпись"), DashedRule()]
+    return out
+
+
 def exam_block(raw: dict, recorded_at: str, doctor: str) -> list:
     """A primary exam written in v3, laid out like the other records."""
     d = exam_mod.complete(raw)

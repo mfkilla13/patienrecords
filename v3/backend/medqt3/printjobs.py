@@ -27,8 +27,8 @@ from datetime import date
 from . import clinical, printlayout, settings
 from . import db as store
 
-PRINTABLE = ("primary_exam", "diary", "operation_protocol")
-KIND_ORDER = {"primary_exam": 0, "diary": 1, "operation_protocol": 2}
+PRINTABLE = ("primary_exam", "diary", "operation_protocol", "other")
+KIND_ORDER = {"primary_exam": 0, "diary": 1, "operation_protocol": 2, "other": 3}
 MIN_SPACE_MM = 25.0   # if less than this is left on the sheet, suggest a new one
 
 # pdfium is not thread-safe and the browser asks for several page images at once
@@ -94,8 +94,9 @@ def _case_records(conn: sqlite3.Connection, case_id: str) -> list[sqlite3.Row]:
     if case is None:
         raise PrintError(404, "История не найдена")
     rows = conn.execute(
-        "SELECT * FROM records WHERE case_id = ? AND deleted_at IS NULL AND kind IN"
-        " ('primary_exam', 'diary', 'operation_protocol')", (case_id,)).fetchall()
+        "SELECT * FROM records WHERE case_id = ? AND deleted_at IS NULL AND (kind IN"
+        " ('primary_exam', 'diary', 'operation_protocol') OR (kind = 'other' AND data_json IS NOT NULL))",
+        (case_id,)).fetchall()
     return sorted(rows, key=_sort_key)
 
 
@@ -112,7 +113,7 @@ def plan(conn: sqlite3.Connection, case_id: str) -> dict:
         view = clinical.record_view(r)
         reason = _printable_reason(r)
         by_label = {s["label"]: s["text"] for s in view["sections"]}
-        summary = next((by_label[k] for k in ("OD", "OS", "OU", "Операция", "Жалобы") if by_label.get(k)), "")
+        summary = next((by_label[k] for k in ("OD", "OS", "OU", "Операция", "Жалобы", "") if by_label.get(k)), "")
         pos = positions.get(r["id"])
         records.append({
             "id": r["id"], "kind": r["kind"], "kindLabel": view["kindLabel"], "recordedAt": view["recordedAt"],
@@ -143,6 +144,8 @@ def _block(r: sqlite3.Row, doctor: str) -> list:
         return printlayout.diary_block(data, r["recorded_at"], doctor)
     if r["kind"] == "operation_protocol":
         return printlayout.protocol_block(data, r["recorded_at"], doctor)
+    if r["kind"] == "other":
+        return printlayout.text_block(data, r["recorded_at"], doctor)
     return printlayout.exam_block(data, r["recorded_at"], doctor)
 
 

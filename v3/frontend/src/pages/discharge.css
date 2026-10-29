@@ -66,3 +66,6 @@
 .ds-page img { display: block; width: 100%; max-width: 520px; margin: 0 auto; background: #fff; border-radius: 4px; box-shadow: 0 2px 4px rgba(40, 30, 20, 0.08), 0 14px 34px rgba(40, 30, 20, 0.12); }
 .ds-print-side { flex: 1 1 240px; display: flex; flex-direction: column; gap: 12px; }
 .ds-hr { border: none; border-top: 1px solid var(--line); width: 100%; margin: 4px 0; }
+.dp-dialog { padding: 22px 26px 26px; gap: 16px; max-width: 980px; }
+.dp-head { display: flex; align-items: center; gap: 12px; justify-content: space-between; }
+.dp-head h2 { margin: 0; font-size: 22px; }

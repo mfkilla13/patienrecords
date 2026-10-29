@@ -98,3 +98,30 @@ def test_prescriptions_add_several_cancel_and_templates(setup):
 
     # Prescribed drugs join the discharge's treatment list.
     assert "Индоколлир 0,1%" in client.get(f"/api/cases/{case_id}/discharge").json()["form"]["treatment_summary"]
+
+
+def test_prescription_sheet_prints_all_sections_with_dates(tmp_path):
+    import pypdfium2
+    from medqt3 import db as store
+    from medqt3 import demo
+    from medqt3.api import create_app
+    from fastapi.testclient import TestClient
+
+    path = tmp_path / "t.db"
+    conn = store.connect(path)
+    cid = demo.create(conn)
+    client = TestClient(create_app(path))
+    client.post(f"/api/cases/{cid}/prescriptions", json={"category": "stol", "names": ["стол 9"], "method": "", "freq": "",
+                                                           "date_from": "2026-10-20", "date_to": None})
+    ids = client.post(f"/api/cases/{cid}/prescriptions", json={"category": "drugs", "names": ["Тауфон 4% капли"], "method": "местно",
+                                                                 "freq": "3 раза в сутки", "date_from": "2026-10-20", "date_to": "2026-10-25"}).json()["ids"]
+    assert ids
+    assert client.get(f"/api/cases/{cid}/prescriptions/pages").json() == {"pages": 1}
+    pdf = pypdfium2.PdfDocument(client.get(f"/api/cases/{cid}/prescriptions/pdf").content)
+    text = pdf[0].get_textpage().get_text_bounded()
+    for s in ("ЛИСТ НАЗНАЧЕНИЙ", "Тестова Анна Ивановна", "Стол, режим", "стол 9", "Препараты", "Тауфон 4% капли",
+              "местно", "3 раза в сутки", "20.10.2026", "25.10.2026", "Лечащий врач"):
+        assert s in text, s
+    r = client.get(f"/api/cases/{cid}/prescriptions/pages/1.png")
+    assert r.status_code == 200 and r.headers["x-page-count"] == "1"
+    assert client.get("/api/cases/nope/prescriptions/pdf").status_code == 404

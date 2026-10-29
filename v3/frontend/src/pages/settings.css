@@ -39,3 +39,19 @@
 .bk-table td { padding: 8px 10px; border-top: 1px solid var(--line); }
 .bk-table td:last-child { text-align: right; white-space: nowrap; }
 .bk-table .link-btn { margin-left: 12px; font-size: 13px; }
+
+/* Dictionaries */
+.dc-groups { display: flex; flex-wrap: wrap; gap: 6px; }
+.dc-groups .chip { height: 32px; font-size: 13px; }
+.dc-n { font-size: 12px; opacity: 0.7; }
+.dc-meta { font-size: 13px; margin-top: -8px; }
+.dc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; max-height: 60vh; overflow-y: auto; border-top: 1px solid var(--line); }
+.dc-item { display: flex; align-items: center; gap: 4px; min-height: 42px; border-bottom: 1px solid var(--line); padding: 2px 4px; }
+.dc-text { flex: 1; min-width: 0; text-align: left; border: none; background: none; font: inherit; font-size: 15px; color: var(--text); padding: 8px 10px; border-radius: 10px; cursor: text; overflow-wrap: anywhere; }
+.dc-text:hover { background: var(--bg); }
+.dc-edit { flex: 1; height: 36px; }
+.dc-icon { flex: none; width: 32px; height: 32px; border: none; border-radius: 50%; background: transparent; color: var(--muted); font-size: 16px; cursor: pointer; }
+.dc-icon:hover:not(:disabled) { background: var(--bg); color: var(--text); }
+.dc-icon:disabled { opacity: 0.25; cursor: default; }
+.dc-icon.del:hover { color: #8a2a12; }
+.dc-empty { padding: 14px 10px; }

@@ -46,6 +46,7 @@ export interface RecordView {
   title: string;
   hasLegacyHtml: boolean;
   editable: boolean;
+  printable: boolean;
 }
 
 export interface StudyView {
@@ -363,14 +364,43 @@ export interface BackupList {
   keep: { daily: number; months: number };
 }
 
+export type SimpleKind = "operation_protocol" | "other";
+export interface SimpleRecordIn { date: string; time: string; title: string; text: string }
+export interface SimpleRecord extends SimpleRecordIn {
+  id: string; caseId: string; kind: SimpleKind; printedAt: string | null; editable: boolean;
+}
+export interface OperationTemplate { name: string; description: string }
+export interface RecordOptions { textTitles: string[]; templates: OperationTemplate[]; now: string }
+
+export interface StatsPoint { key: string; label: string; value: number | null; n?: number }
+export interface Stats {
+  from: string; to: string; group: "day" | "month" | "year";
+  totals: { admitted: number; discharged: number; avgStay: number | null; inDepartment: number };
+  admissions: StatsPoint[]; discharges: StatsPoint[]; avgStay: StatsPoint[];
+  diagnoses: { label: string; value: number }[]; outcomes: { label: string; value: number }[];
+}
+
+export type DictName = "ophthalmic" | "comorbid" | "examinations" | "treatment" | "prescriptions" | "addresses";
+export type DictValue = string[] | Record<string, string[]>;
+export interface DictInfo {
+  name: DictName;
+  title: string;
+  hint: string;
+  groups: Record<string, string> | null;
+  value: DictValue;
+  edited: boolean;
+  canReset: boolean;
+}
+
 export class ApiError extends Error {}
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(path, {
-    method,
-    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  return send<T>(method, path, body === undefined ? undefined : JSON.stringify(body),
+    body === undefined ? undefined : { "Content-Type": "application/json" });
+}
+
+async function send<T>(method: string, path: string, body?: BodyInit, headers?: Record<string, string>): Promise<T> {
+  const res = await fetch(path, { method, headers, body });
   if (!res.ok) {
     let message = `${res.status} ${res.statusText}`;
     try {
@@ -463,6 +493,27 @@ export const api = {
   deleteBackup: (name: string) => request<{ ok: true }>("DELETE", `/api/backups/${encodeURIComponent(name)}`),
   setBackupExtraDir: (path: string) => request<{ extraDir: string }>("PUT", "/api/backups/extra-dir", { path }),
   openBackupFolder: () => request<{ ok: true }>("POST", "/api/backups/open-folder"),
+  dictionary: (name: DictName) => get<DictInfo>(`/api/dictionaries/${name}`),
+  saveDictionary: (name: DictName, value: DictValue) => request<DictInfo>("PUT", `/api/dictionaries/${name}`, { value }),
+  resetDictionary: (name: DictName) => request<DictInfo>("DELETE", `/api/dictionaries/${name}`),
+  recordOptions: () => get<RecordOptions>("/api/record-options"),
+  record: (id: string) => get<SimpleRecord>(`/api/records/${encodeURIComponent(id)}`),
+  saveRecord: (caseId: string, kind: SimpleKind, r: SimpleRecordIn, id: string | null) =>
+    id
+      ? request<{ id: string }>("PUT", `/api/records/${encodeURIComponent(id)}`, r)
+      : request<{ id: string }>("POST", `/api/cases/${encodeURIComponent(caseId)}/records/${kind}`, r),
+  deleteRecord: (id: string) => request<{ ok: true }>("DELETE", `/api/records/${encodeURIComponent(id)}`),
+  saveOperationTemplate: (t: OperationTemplate) => request<OperationTemplate[]>("POST", "/api/operation-templates", t),
+  deleteOperationTemplate: (name: string) =>
+    request<OperationTemplate[]>("DELETE", `/api/operation-templates?name=${encodeURIComponent(name)}`),
+  prescriptionPages: (caseId: string) => get<{ pages: number }>(`/api/cases/${encodeURIComponent(caseId)}/prescriptions/pages`),
+  prescriptionPageUrl: (caseId: string, page: number, stamp: number) =>
+    `/api/cases/${encodeURIComponent(caseId)}/prescriptions/pages/${page}.png?v=${stamp}`,
+  prescriptionPdfUrl: (caseId: string) => `/api/cases/${encodeURIComponent(caseId)}/prescriptions/pdf`,
+  printPrescriptions: (caseId: string, printer: string, copies: number) =>
+    request<{ ok: true }>("POST", `/api/cases/${encodeURIComponent(caseId)}/prescriptions/print`, { printer, copies }),
+  stats: (from: string, to: string) =>
+    get<Stats>(`/api/stats?${new URLSearchParams({ date_from: from, date_to: to }).toString()}`),
   settings: () => get<Settings>("/api/settings"),
   saveSettings: (s: Settings) => request<Settings>("PUT", "/api/settings", s),
 };

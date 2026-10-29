@@ -13,10 +13,9 @@ const KIND_FILTERS: { key: KindFilter; label: string }[] = [
   { key: "diary", label: "Дневники" },
   { key: "primary_exam", label: "Первичный осмотр" },
   { key: "operation_protocol", label: "Протоколы" },
+  { key: "other", label: "Другие записи" },
   { key: "discharge_summary", label: "Выписка" },
 ];
-
-const PRINTABLE = new Set(["primary_exam", "diary", "operation_protocol"]);
 
 function StepPill({ step, index }: { step: Step; index: number }) {
   const sub = step.key === "admission" ? fullDate(step.sub) : /^\d{4}-\d{2}-\d{2}/.test(step.sub) ? shortDate(step.sub) : step.sub;
@@ -72,14 +71,14 @@ function RecordCard({ r, caseId, active }: { r: RecordView; caseId: string; acti
           {time && `, ${time}`}
         </span>
         <div style={{ flex: 1 }} />
-        {PRINTABLE.has(r.kind) &&
+        {r.printable &&
           (r.printedAt ? (
             <span className="pill tone-neutral rec-badge">напечатано {shortDate(r.printedAt)}</span>
           ) : (
             <span className="pill tone-amber rec-badge">не напечатано</span>
           ))}
         {active && r.editable && (
-          <Link to={r.kind === "primary_exam" ? `/case/${caseId}/exam` : `/case/${caseId}/diary/${r.id}`} className="rec-edit">Изменить</Link>
+          <Link to={r.kind === "primary_exam" ? `/case/${caseId}/exam` : r.kind === "diary" ? `/case/${caseId}/diary/${r.id}` : `/case/${caseId}/record/${r.id}`} className="rec-edit">Изменить</Link>
         )}
       </div>
       {r.title && r.kind === "operation_protocol" && <div className="rec-title">{r.title}</div>}

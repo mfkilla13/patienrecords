@@ -14,8 +14,8 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import (__version__, admission, archive, backups, clinical, diaries, discharge, dischargeprint, exams, prescriptions,
-               paths, printjobs, settings, studies)
+from . import (__version__, admission, archive, backups, clinical, diaries, dicts, discharge, dischargeprint, exams,
+               prescriptions, paths, printjobs, records, rxprint, settings, stats, studies)
 from . import db as store
 
 class PrintJobIn(BaseModel):
@@ -35,6 +35,10 @@ class ExtraDirIn(BaseModel):
     path: str
 
 
+class DictIn(BaseModel):
+    value: list | dict
+
+
 class DischargePrintIn(BaseModel):
     printer: str
     copies: int = 1
@@ -46,7 +50,7 @@ class ExamIn(BaseModel):
 
 
 FRONTEND_DIST = paths.frontend_dist()
-PRINTABLE_KINDS = ("primary_exam", "diary", "operation_protocol")
+PRINTABLE_KINDS = ("primary_exam", "diary", "operation_protocol", "other")
 _EYE = re.compile(r"\b(OD|OS|OU)\b")
 
 
@@ -83,7 +87,8 @@ def department(conn: sqlite3.Connection, today: date | None = None) -> dict:
                EXISTS (SELECT 1 FROM records r WHERE r.case_id = c.id AND r.deleted_at IS NULL
                        AND r.kind = 'diary' AND substr(r.recorded_at, 1, 10) = :today) AS diary_today,
                (SELECT COUNT(*) FROM records r WHERE r.case_id = c.id AND r.deleted_at IS NULL
-                       AND r.kind IN ('primary_exam', 'diary', 'operation_protocol')
+                       AND (r.kind IN ('primary_exam', 'diary', 'operation_protocol')
+                            OR (r.kind = 'other' AND r.data_json IS NOT NULL))
                        AND r.printed_at IS NULL) AS unprinted
         FROM cases c JOIN patients p ON p.id = c.patient_id
         WHERE c.deleted_at IS NULL AND c.status IN ('active', 'discharged')
@@ -195,7 +200,7 @@ def case_card(conn: sqlite3.Connection, case_id: str, today: date | None = None)
         "studies": [{"id": x["id"], "kind": x["name"], "date": x["date"], "unparsedDate": x["unparsedDate"],
                      "summary": x["result"].replace("\n", "; "), "flags": x["flags"]} for x in study_rows],
         "prescriptions": prescription_rows,
-        "unprinted": sum(1 for r in records if r["kind"] in PRINTABLE_KINDS and not r["printedAt"]),
+        "unprinted": sum(1 for r in records if r["printable"] and not r["printedAt"]),
         "printState": dict(print_state) if print_state else None,
     }
 
@@ -431,9 +436,81 @@ def create_app(db_path: Path | None = None, auto_backup: bool = False) -> FastAP
         _rx(prescriptions.delete, pid)
         return {"ok": True}
 
+    def _rx(fn, *args):
+        try:
+            return fn(conn, *args)
+        except prescriptions.PrescriptionError as e:
+            raise HTTPException(e.status, e.message)
+
+    @app.get("/api/cases/{case_id}/prescriptions/pdf")
+    def get_prescriptions_pdf(case_id: str):
+        return Response(_rx(rxprint.pdf, case_id), media_type="application/pdf",
+                        headers={"Content-Disposition": f'inline; filename="naznacheniya-{case_id[:8]}.pdf"'})
+
+    @app.get("/api/cases/{case_id}/prescriptions/pages/{page}.png")
+    def get_prescriptions_page(case_id: str, page: int, dpi: int = 110):
+        png, count = _rx(rxprint.preview_png, case_id, page, max(60, min(dpi, 220)))
+        return Response(png, media_type="image/png", headers={"X-Page-Count": str(count), "Cache-Control": "no-store"})
+
+    @app.get("/api/cases/{case_id}/prescriptions/pages")
+    def get_prescriptions_pages(case_id: str):
+        return {"pages": _rx(rxprint.pages, case_id)}
+
+    @app.post("/api/cases/{case_id}/prescriptions/print")
+    def post_prescriptions_print(case_id: str, body: DischargePrintIn):
+        try:
+            _rx(rxprint.send, case_id, body.printer, body.copies)
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(502, f"Принтер не принял задание: {e}")
+        return {"ok": True}
+
     @app.put("/api/prescription-templates")
     def put_prescription_templates(body: prescriptions.TemplatesIn):
         return prescriptions.save_templates(conn, body)
+
+    def _rc(fn, *args):
+        try:
+            return fn(conn, *args)
+        except records.RecordError as e:
+            raise HTTPException(e.status, e.message)
+
+    @app.get("/api/record-options")
+    def get_record_options():
+        return records.options(conn)
+
+    @app.post("/api/cases/{case_id}/records/{kind}", status_code=201)
+    def post_record(case_id: str, kind: str, body: records.RecordIn):
+        return _rc(records.create, case_id, kind, body)
+
+    @app.get("/api/records/{record_id}")
+    def get_record(record_id: str):
+        return _rc(records.get, record_id)
+
+    @app.put("/api/records/{record_id}")
+    def put_record(record_id: str, body: records.RecordIn):
+        return _rc(records.update, record_id, body)
+
+    @app.delete("/api/records/{record_id}")
+    def delete_record(record_id: str):
+        _rc(records.delete, record_id)
+        return {"ok": True}
+
+    @app.post("/api/operation-templates")
+    def post_operation_template(body: records.TemplateIn):
+        return records.save_template(conn, body)
+
+    @app.delete("/api/operation-templates")
+    def delete_operation_template(name: str):
+        return records.delete_template(conn, name)
+
+    @app.get("/api/stats")
+    def get_stats(date_from: str = "", date_to: str = ""):
+        try:
+            return stats.compute(conn, date_from or None, date_to or None)
+        except stats.StatsError as e:
+            raise HTTPException(e.status, e.message)
 
     @app.get("/api/archive")
     def get_archive(q: str = "", period: str = "all", dx: str = "", outcome: str = "", page: int = 1):
@@ -477,6 +554,38 @@ def create_app(db_path: Path | None = None, auto_backup: bool = False) -> FastAP
     def post_open_folder():
         backups.open_folder(db_path)
         return {"ok": True}
+
+    def _dc(fn, *args):
+        try:
+            return fn(conn, *args)
+        except dicts.DictError as e:
+            raise HTTPException(e.status, e.message)
+
+    def _dict_info(name: str) -> dict:
+        if name == "prescriptions":    # the templates of the prescription sheet, kept by their own module
+            return {"name": name, "title": "Шаблоны назначений", "groups": prescriptions.CATEGORIES,
+                    "hint": "Быстрый выбор на листе назначений, по разделам. Там же их можно добавлять и убирать.",
+                    "value": prescriptions.templates(conn), "edited": False, "canReset": False}
+        return _dc(dicts.info, name)
+
+    @app.get("/api/dictionaries/{name}")
+    def get_dictionary(name: str):
+        return _dict_info(name)
+
+    @app.put("/api/dictionaries/{name}")
+    def put_dictionary(name: str, body: DictIn):
+        if name == "prescriptions":
+            if not isinstance(body.value, dict):
+                raise HTTPException(422, "Ожидались разделы")
+            prescriptions.save_templates(conn, prescriptions.TemplatesIn(templates=body.value))
+        else:
+            _dc(dicts.put, name, body.value)
+        return _dict_info(name)
+
+    @app.delete("/api/dictionaries/{name}")
+    def delete_dictionary(name: str):
+        _dc(dicts.reset, name)
+        return _dict_info(name)
 
     @app.get("/api/settings")
     def get_settings():

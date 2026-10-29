@@ -5,17 +5,14 @@ Case numbers continue 2.9's sequence: the next number after the largest one.
 
 from __future__ import annotations
 
-import json
 import re
 import sqlite3
 from datetime import date
-from pathlib import Path
 
 from pydantic import BaseModel, Field, field_validator
 
 from . import db as store
-
-DICT_DIR = Path(__file__).resolve().parent / "dictdata"
+from . import dicts
 
 
 class AdmissionError(Exception):
@@ -133,25 +130,21 @@ def admit(conn: sqlite3.Connection, a: AdmissionIn) -> dict:
     return {"caseId": cid, "number": number, "patientId": pid}
 
 
-def _load(name: str):
-    return json.loads((DICT_DIR / name).read_text(encoding="utf-8"))
-
-
 def dictionaries(conn: sqlite3.Connection) -> dict:
     """Lists for suggestions. Towns and streets also grow from addresses already in the database."""
-    addresses = _load("addresses.json")
-    cities = {c for c in addresses.get("cities", []) if c}
-    streets = {s for s in addresses.get("streets", []) if s}
+    addresses = dicts.get(conn, "addresses")
+    cities = set(addresses["cities"])
+    streets = set(addresses["streets"])
     for r in conn.execute("SELECT DISTINCT city, street FROM patients"):
         if r["city"]:
             cities.add(r["city"])
         if r["street"]:
             streets.add(r["street"])
     return {
-        "ophthalmic": _load("ophthalmic_diagnoses.json"),
-        "comorbid": _load("comorbid_diagnoses.json"),
-        "examinations": _load("examinations.json"),
-        "treatment": _load("treatment_basis.json"),
+        "ophthalmic": dicts.get(conn, "ophthalmic"),
+        "comorbid": dicts.get(conn, "comorbid"),
+        "examinations": dicts.get(conn, "examinations"),
+        "treatment": dicts.get(conn, "treatment"),
         "cities": sorted(cities, key=str.casefold),
         "streets": sorted(streets, key=str.casefold),
         "nextNumber": next_number(conn),

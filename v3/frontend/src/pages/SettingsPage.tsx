@@ -1,22 +1,33 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { api, Settings } from "../api";
+import { api, DictName, Settings } from "../api";
 import { BackupsSection } from "./BackupsSection";
+import { DictionarySection } from "./DictionarySection";
 import "./settings.css";
 
-const DICTIONARIES = [
-  "Диагнозы — глаза",
-  "Сопутствующие диагнозы",
-  "Обоснование лечения",
-  "Обследования",
-  "Шаблоны назначений",
-  "Шаблоны операций",
-  "Адреса",
+const DICTIONARIES: [DictName, string][] = [
+  ["ophthalmic", "Диагнозы — глаза"],
+  ["comorbid", "Сопутствующие диагнозы"],
+  ["treatment", "Обоснование лечения"],
+  ["examinations", "Обследования"],
+  ["prescriptions", "Шаблоны назначений"],
+  ["addresses", "Адреса"],
 ];
+const SETTINGS = [["print", "Учреждение, подпись, печать"], ["backups", "Резервные копии"]] as const;
 
 export function SettingsPage() {
   const [params, setParams] = useSearchParams();
-  const section = params.get("s") === "backups" ? "backups" : "print";
+  const s = params.get("s") ?? "";
+  const dict = DICTIONARIES.find(([key]) => key === s)?.[0] ?? null;
+  const section = dict ?? (s === "backups" ? "backups" : "print");
+  const [dictDirty, setDictDirty] = useState(false);
+  const onDictDirty = useCallback((d: boolean) => setDictDirty(d), []);
+  const open = (key: string) => {
+    if (key === section) return;
+    if (dictDirty && !window.confirm("В списке есть несохранённые изменения. Уйти без сохранения?")) return;
+    setDictDirty(false);
+    setParams(key === "print" ? {} : { s: key }, { replace: true });
+  };
   const [form, setForm] = useState<Settings | null>(null);
   const [saved, setSaved] = useState<Settings | null>(null);
   const [printers, setPrinters] = useState<{ list: string[]; windowsDefault: string | null }>({ list: [], windowsDefault: null });
@@ -56,22 +67,17 @@ export function SettingsPage() {
     <main className="page st">
       <nav className="st-nav" aria-label="Справочники и настройки">
         <h1>Справочники</h1>
-        {DICTIONARIES.map((d) => (
-          <span key={d} className="st-nav-item off" aria-disabled="true">
-            <span style={{ flex: 1 }}>{d}</span>
-            <span className="muted" style={{ fontSize: 12 }}>скоро</span>
-          </span>
-        ))}
-        <div className="st-nav-group">Настройки</div>
-        {([["print", "Учреждение, подпись, печать"], ["backups", "Резервные копии"]] as const).map(([key, label]) => (
-          <button key={key} type="button" className={"st-nav-item st-nav-btn" + (section === key ? " on" : "")}
-            aria-current={section === key ? "page" : undefined} onClick={() => setParams(key === "print" ? {} : { s: key }, { replace: true })}>
-            {label}
+        {[...DICTIONARIES, null, ...SETTINGS].map((item) => item === null ? (
+          <div key="group" className="st-nav-group">Настройки</div>
+        ) : (
+          <button key={item[0]} type="button" className={"st-nav-item st-nav-btn" + (section === item[0] ? " on" : "")}
+            aria-current={section === item[0] ? "page" : undefined} onClick={() => open(item[0])}>
+            {item[1]}
           </button>
         ))}
       </nav>
 
-      {section === "backups" ? <BackupsSection /> : (
+      {dict ? <DictionarySection name={dict} onDirty={onDictDirty} /> : section === "backups" ? <BackupsSection /> : (
       <section className="card st-card" aria-label="Учреждение, подпись, печать">
         <h2>Учреждение, подпись, печать</h2>
         {!form ? (

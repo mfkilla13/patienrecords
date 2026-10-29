@@ -11,6 +11,8 @@ import { DiaryPage } from "./pages/DiaryPage";
 import { PrintPage } from "./pages/PrintPage";
 import { RoundPage } from "./pages/RoundPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { StatsPage } from "./pages/StatsPage";
+import { NewRecordPage, RecordPage } from "./pages/RecordPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { longToday, todayIso } from "./format";
 
@@ -46,7 +48,9 @@ export function App() {
         <Route path="/case/:caseId" element={<CasePage />} />
         <Route path="/case/:caseId/diary" element={<DiaryPage />} />
         <Route path="/case/:caseId/diary/:recordId" element={<DiaryPage />} />
-        <Route path="/case/:caseId/new" element={<PlaceholderPage title="Новая запись" />} />
+        <Route path="/case/:caseId/new" element={<NewRecordPage />} />
+        <Route path="/case/:caseId/record/new/:kind" element={<RecordPage />} />
+        <Route path="/case/:caseId/record/:recordId" element={<RecordPage />} />
         <Route path="/case/:caseId/print" element={<PrintPage />} />
         <Route path="/case/:caseId/discharge" element={<DischargePage />} />
         <Route path="/case/:caseId/studies" element={<StudiesPage />} />
@@ -55,7 +59,7 @@ export function App() {
         <Route path="/case/:caseId/exam" element={<ExamPage />} />
         <Route path="/round" element={<RoundPage />} />
         <Route path="/archive" element={<ArchivePage />} />
-        <Route path="/stats" element={<PlaceholderPage title="Статистика" />} />
+        <Route path="/stats" element={<StatsPage />} />
         <Route path="/dictionaries" element={<SettingsPage />} />
         <Route path="*" element={<PlaceholderPage title="Страница не найдена" />} />
       </Routes>

@@ -6,7 +6,10 @@ and every other old column to legacy_json. Each row keeps its old id in
 legacy_id so the import can be checked row by row.
 
 Usage:
-    python -m medqt3.importer path/to/patients.db [--db path/to/medqt.db] [--force]
+    python -m medqt3.importer path/to/patients.db [--db path/to/medqt.db] [--force] [--dicts 2.9/data]
+
+--dicts: the doctor's dictionaries from 2.9's data folder (diagnoses, examinations, treatment basis,
+addresses she added there); their entries are added to the program's own lists.
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ import sys
 from pathlib import Path
 
 from . import db as store
+from . import dicts
 
 _DMY = re.compile(r"^\s*(\d{1,2})[.,](\d{1,2})[.,](\d{2,4})\s*$")
 _ISO = re.compile(r"^\s*(\d{4})-(\d{2})-(\d{2})")
@@ -66,7 +70,10 @@ def _latest_nonempty(rows, key: str) -> str:
 
 def import_legacy(old_path: Path, conn: sqlite3.Connection, as_unprinted: bool = False) -> dict:
     """as_unprinted: for trying printing on real histories — print marks and 2.9 sheet positions are
-    left out, so every record can be printed by v3 from the first sheet. Never use for the real move."""
+    left out, so every record can be printed by v3 from the first sheet. Never use for the real move.
+
+    Returns {table: (rows in 2.9, rows carried over)}; rows that point at something missing in 2.9
+    itself (a record of a deleted case) are skipped and show up as a difference."""
     old = sqlite3.connect(f"file:{Path(old_path).as_posix()}?mode=ro", uri=True)
     old.row_factory = sqlite3.Row
     ts = store.now_iso()
@@ -93,6 +100,8 @@ def import_legacy(old_path: Path, conn: sqlite3.Connection, as_unprinted: bool =
             by_case.setdefault(h["history_id"], []).append(h)
 
         for c in old.execute("SELECT * FROM medical_cases ORDER BY id"):
+            if c["patient_id"] not in patient_ids:
+                continue
             cid = store.new_id()
             case_ids[c["id"]] = cid
             recs = by_case.get(c["id"], [])
@@ -116,6 +125,8 @@ def import_legacy(old_path: Path, conn: sqlite3.Connection, as_unprinted: bool =
             )
 
         for h in histories:
+            if h["history_id"] not in case_ids:
+                continue
             data = _json_or_none(h["notes"])
             legacy = {k: h[k] for k in ("diagnosis", "treatment", "diag_admission", "diag_clinical",
                                         "diag_comorbid", "printed", "print_top_offset_mm") if h[k] not in (None, "")}
@@ -133,6 +144,8 @@ def import_legacy(old_path: Path, conn: sqlite3.Connection, as_unprinted: bool =
             )
 
         for d in old.execute("SELECT * FROM diagnostics"):
+            if d["history_id"] not in case_ids:
+                continue
             data = _json_or_none(d["results"]) or {"schema": "free_text", "name": d["name"], "text": d["results"]}
             if d["study_date"] and not to_date(d["study_date"]):
                 # Typos like "20.0432026" are kept as typed for the doctor to fix, never guessed.
@@ -146,6 +159,8 @@ def import_legacy(old_path: Path, conn: sqlite3.Connection, as_unprinted: bool =
 
         record_case = {h["id"]: h["history_id"] for h in histories}
         for a in old.execute("SELECT * FROM appointments"):
+            if record_case.get(a["history_id"]) not in case_ids:
+                continue
             conn.execute(
                 "INSERT INTO prescriptions (id, case_id, name, method, freq, date_from, date_to,"
                 " created_at, updated_at, legacy_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
@@ -173,8 +188,9 @@ def import_legacy(old_path: Path, conn: sqlite3.Connection, as_unprinted: bool =
     if not as_unprinted:
         tables.append(("case_print_state", "print_state"))
     for old_table, new_table in tables:
+        carried = ("source = 'legacy'" if new_table == "print_state" else "legacy_id IS NOT NULL")
         counts[new_table] = (old.execute(f"SELECT COUNT(*) FROM {old_table}").fetchone()[0],
-                             conn.execute(f"SELECT COUNT(*) FROM {new_table}").fetchone()[0])
+                             conn.execute(f"SELECT COUNT(*) FROM {new_table} WHERE {carried}").fetchone()[0])
     old.close()
     return counts
 
@@ -186,6 +202,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--force", action="store_true", help="перезаписать существующую новую базу")
     ap.add_argument("--as-unprinted", action="store_true",
                     help="для проверки печати: перенести все записи как ненапечатанные (не для настоящего переноса)")
+    ap.add_argument("--dicts", type=Path, default=None, help="папка data программы 2.9 — добавить её справочники")
     args = ap.parse_args(argv)
 
     target = args.db or store.default_db_path()
@@ -205,6 +222,12 @@ def main(argv: list[str] | None = None) -> int:
         mark = "ok" if was == now else "РАСХОЖДЕНИЕ"
         ok &= was == now
         print(f"{table:14} было {was:4}  стало {now:4}  {mark}")
+    if args.dicts:
+        for name, (file_name, title) in dicts.FILES.items():
+            f = args.dicts / file_name
+            if f.is_file():
+                added = dicts.merge(conn, name, json.loads(f.read_text(encoding="utf-8-sig")))
+                print(f"справочник «{title}»: добавлено {added}")
     return 0 if ok else 2
 
 
