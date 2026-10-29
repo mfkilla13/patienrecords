@@ -352,6 +352,17 @@ export interface ArchiveQuery { q: string; period: string; dx: string; outcome: 
 const archiveParams = (a: ArchiveQuery) =>
   new URLSearchParams(Object.entries(a).filter(([, v]) => v !== "" && v !== undefined).map(([k, v]) => [k, String(v)])).toString();
 
+export interface BackupItem { name: string; kind: string; kindLabel: string; at: string; size: number }
+
+export interface BackupList {
+  folder: string;
+  extraDir: string;
+  extraError: string | null;
+  last: string | null;
+  items: BackupItem[];
+  keep: { daily: number; months: number };
+}
+
 export class ApiError extends Error {}
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -446,6 +457,12 @@ export const api = {
     request<Record<string, string[]>>("PUT", "/api/prescription-templates", { templates }),
   archiveList: (a: ArchiveQuery) => get<ArchiveResult>(`/api/archive?${archiveParams(a)}`),
   archiveCsvUrl: (a: ArchiveQuery) => `/api/archive.csv?${archiveParams(a)}`,
+  backups: () => get<BackupList>("/api/backups"),
+  makeBackup: () => request<{ name: string; extraError: string | null }>("POST", "/api/backups"),
+  restoreBackup: (name: string) => request<{ restored: string; savedAs: string }>("POST", `/api/backups/${encodeURIComponent(name)}/restore`),
+  deleteBackup: (name: string) => request<{ ok: true }>("DELETE", `/api/backups/${encodeURIComponent(name)}`),
+  setBackupExtraDir: (path: string) => request<{ extraDir: string }>("PUT", "/api/backups/extra-dir", { path }),
+  openBackupFolder: () => request<{ ok: true }>("POST", "/api/backups/open-folder"),
   settings: () => get<Settings>("/api/settings"),
   saveSettings: (s: Settings) => request<Settings>("PUT", "/api/settings", s),
 };

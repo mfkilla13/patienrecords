@@ -37,6 +37,11 @@ _lock = threading.RLock()
 _pdf_cache: dict[str, bytes] = {}
 
 
+def forget_cache() -> None:
+    with _lock:
+        _pdf_cache.clear()
+
+
 def _serialized(fn):
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):

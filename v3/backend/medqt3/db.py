@@ -176,7 +176,8 @@ def default_db_path() -> Path:
     env = os.environ.get("MEDQT_DB")
     if env:
         return Path(env)
-    return Path(__file__).resolve().parents[2] / "data" / "medqt.db"
+    from .paths import data_dir
+    return data_dir() / "medqt.db"
 
 
 def connect(path: Path | None = None) -> sqlite3.Connection:

@@ -14,8 +14,8 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import (__version__, admission, archive, clinical, diaries, discharge, dischargeprint, exams, prescriptions,
-               printjobs, settings, studies)
+from . import (__version__, admission, archive, backups, clinical, diaries, discharge, dischargeprint, exams, prescriptions,
+               paths, printjobs, settings, studies)
 from . import db as store
 
 class PrintJobIn(BaseModel):
@@ -31,6 +31,10 @@ class PrintIn(BaseModel):
     printer: str
 
 
+class ExtraDirIn(BaseModel):
+    path: str
+
+
 class DischargePrintIn(BaseModel):
     printer: str
     copies: int = 1
@@ -41,7 +45,7 @@ class ExamIn(BaseModel):
     templateId: str | None = None
 
 
-FRONTEND_DIST =Path(__file__).resolve().parents[2] / "frontend" / "dist"
+FRONTEND_DIST = paths.frontend_dist()
 PRINTABLE_KINDS = ("primary_exam", "diary", "operation_protocol")
 _EYE = re.compile(r"\b(OD|OS|OU)\b")
 
@@ -200,9 +204,12 @@ def case_card(conn: sqlite3.Connection, case_id: str, today: date | None = None)
 LEGACY_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:"
 
 
-def create_app(db_path: Path | None = None) -> FastAPI:
+def create_app(db_path: Path | None = None, auto_backup: bool = False) -> FastAPI:
+    db_path = Path(db_path or store.default_db_path())
     conn = store.connect(db_path)
     app = FastAPI(title="MedQT", version=__version__)
+    if auto_backup:
+        backups.start_daily(conn, db_path)
 
     @app.get("/api/health")
     def health():
@@ -436,6 +443,40 @@ def create_app(db_path: Path | None = None) -> FastAPI:
     def get_archive_csv(q: str = "", period: str = "all", dx: str = "", outcome: str = ""):
         return Response(archive.export_csv(conn, q, period, dx, outcome), media_type="text/csv; charset=utf-8",
                         headers={"Content-Disposition": f'attachment; filename="{archive.export_name(period)}"'})
+
+    def _bk(fn, *args):
+        try:
+            return fn(*args)
+        except backups.BackupError as e:
+            raise HTTPException(e.status, e.message)
+
+    @app.get("/api/backups")
+    def get_backups():
+        return backups.listing(conn, db_path)
+
+    @app.post("/api/backups", status_code=201)
+    def post_backup():
+        return _bk(backups.make, conn, db_path, "manual")
+
+    @app.post("/api/backups/{name}/restore")
+    def post_restore(name: str):
+        result = _bk(backups.restore, conn, db_path, name)
+        printjobs.forget_cache()        # print previews were built from the data that has just been replaced
+        return result
+
+    @app.delete("/api/backups/{name}")
+    def delete_backup(name: str):
+        _bk(backups.delete, db_path, name)
+        return {"ok": True}
+
+    @app.put("/api/backups/extra-dir")
+    def put_extra_dir(body: ExtraDirIn):
+        return {"extraDir": _bk(backups.set_extra_dir, conn, body.path)}
+
+    @app.post("/api/backups/open-folder")
+    def post_open_folder():
+        backups.open_folder(db_path)
+        return {"ok": True}
 
     @app.get("/api/settings")
     def get_settings():

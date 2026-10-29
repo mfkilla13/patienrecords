@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api, Settings } from "../api";
+import { BackupsSection } from "./BackupsSection";
 import "./settings.css";
 
 const DICTIONARIES = [
@@ -13,6 +15,8 @@ const DICTIONARIES = [
 ];
 
 export function SettingsPage() {
+  const [params, setParams] = useSearchParams();
+  const section = params.get("s") === "backups" ? "backups" : "print";
   const [form, setForm] = useState<Settings | null>(null);
   const [saved, setSaved] = useState<Settings | null>(null);
   const [printers, setPrinters] = useState<{ list: string[]; windowsDefault: string | null }>({ list: [], windowsDefault: null });
@@ -59,9 +63,15 @@ export function SettingsPage() {
           </span>
         ))}
         <div className="st-nav-group">Настройки</div>
-        <span className="st-nav-item on" aria-current="page">Учреждение, подпись, печать</span>
+        {([["print", "Учреждение, подпись, печать"], ["backups", "Резервные копии"]] as const).map(([key, label]) => (
+          <button key={key} type="button" className={"st-nav-item st-nav-btn" + (section === key ? " on" : "")}
+            aria-current={section === key ? "page" : undefined} onClick={() => setParams(key === "print" ? {} : { s: key }, { replace: true })}>
+            {label}
+          </button>
+        ))}
       </nav>
 
+      {section === "backups" ? <BackupsSection /> : (
       <section className="card st-card" aria-label="Учреждение, подпись, печать">
         <h2>Учреждение, подпись, печать</h2>
         {!form ? (
@@ -118,6 +128,7 @@ export function SettingsPage() {
           </>
         )}
       </section>
+      )}
     </main>
   );
 }
