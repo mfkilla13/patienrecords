@@ -261,7 +261,7 @@ export function DiaryPage() {
                 placeholder="например: швы сняты" disabled={readOnly} />
             </label>
             {(form.discharge_note.trim() || form.recommendations) && (
-              <label className="lbl">Рекомендации <span className="muted" style={{ fontWeight: 400 }}>при выписке встанут в текст эпикриза</span>
+              <label className="lbl">Рекомендации <span className="muted" style={{ fontWeight: 400 }}>при выписке встанут в «Лечебные и трудовые рекомендации»</span>
                 <textarea className="ta" rows={3} value={form.recommendations ?? ""} onChange={(e) => set("recommendations", e.target.value)}
                   placeholder="например: инстилляции Тобрекс 1 кап. 4 р/д 7 дней, наблюдение окулиста по месту жительства" disabled={readOnly} />
               </label>

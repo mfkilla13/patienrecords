@@ -453,11 +453,6 @@ export function DischargePage() {
             <button type="button" className="chip" disabled={!localLine("od")} onClick={() => insert(localLine("od"))}>Статус OD</button>
             <button type="button" className="chip" disabled={!localLine("os")} onClick={() => insert(localLine("os"))}>Статус OS</button>
             <button type="button" className="chip" onClick={() => insert("OU: ")}>OU:</button>
-            {src.diaryRecommendations && (
-              <button type="button" className="chip" onClick={() => insert(`Рекомендации: ${src.diaryRecommendations!.text}`)}>
-                Рекомендации из дневника {shortDate(src.diaryRecommendations.date)}
-              </button>
-            )}
             {src.lastDiary && (
               <button type="button" className="chip" onClick={() => insert((["od", "os", "ou"] as const).filter((e) => src.lastDiary![e]).map((e) => `${e.toUpperCase()}: ${src.lastDiary![e]}`).join("\n"))}>
                 Из дневника {shortDate(src.lastDiary.date)}
@@ -494,6 +489,14 @@ export function DischargePage() {
       <label className="lbl">Лечебные и трудовые рекомендации
         <textarea className="ta" rows={7} value={form.recommendations} disabled={ro} onChange={(e) => set("recommendations", e.target.value)} />
       </label>
+      {!ro && src.diaryRecommendations && form.recommendations.trim() !== src.diaryRecommendations.text.trim() && (
+        <span className="ex-chips">
+          <button type="button" className="chip" onClick={() => set("recommendations", form.recommendations.trim()
+            ? `${form.recommendations.trim()}\n${src.diaryRecommendations!.text}` : src.diaryRecommendations!.text)}>
+            Из дневника {shortDate(src.diaryRecommendations.date)}: {src.diaryRecommendations.text.slice(0, 60)}{src.diaryRecommendations.text.length > 60 ? "…" : ""}
+          </button>
+        </span>
+      )}
       {!ro && src.recentRecommendations.length > 0 && (
         <div className="ds-recent">
           <span className="muted ds-insert-label">Как в прошлых выписках:</span>

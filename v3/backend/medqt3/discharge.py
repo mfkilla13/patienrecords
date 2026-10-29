@@ -279,7 +279,7 @@ def draft(conn: sqlite3.Connection, case_id: str) -> dict:
                 "SELECT name FROM prescriptions WHERE case_id = ? AND category = 'drugs' AND deleted_at IS NULL"
                 " ORDER BY COALESCE(date_from, ''), created_at", (case_id,))]),
             "discharge_local": local_at_admission,
-            "epicrisis": f"Рекомендации: {diary_rec[1]}" if diary_rec else "",
+            "recommendations": diary_rec[1] if diary_rec else "",       # «Лечебные и трудовые рекомендации»
             **(_vision_of(last_vis[1]) if last_vis else {}),
         })
         # The workplace rarely changes between stays: take it from the patient's last discharge.

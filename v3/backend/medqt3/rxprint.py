@@ -18,7 +18,7 @@ from reportlab.platypus import BaseDocTemplate, Frame, KeepTogether, PageTemplat
 from . import prescriptions as rx
 from . import printjobs, settings
 from .dischargeprint import BOTTOM_MM, HEAD, SUB, TEXT, TITLE, TOP_MM, Signatures, _box, _label_cell, _page, full_date
-from .printlayout import CONTENT_W, FONT_SEMI, GREY, MARGIN_X, PAGE_H, PAGE_W, _date_ru, _esc, _p
+from .printlayout import CONTENT_W, FONT_SEMI, GREY, MARGIN_X, PAGE_H, PAGE_W, _date_ru, _esc, _p, paper_number
 
 SMALL = ParagraphStyle("rxsmall", parent=TEXT, fontSize=8.5, leading=11)
 
@@ -29,7 +29,7 @@ def _case(conn: sqlite3.Connection, case_id: str) -> dict:
         " WHERE c.id = ? AND c.deleted_at IS NULL", (case_id,)).fetchone()
     if c is None:
         raise rx.PrescriptionError(404, "История не найдена")
-    return {"number": c["number"], "patient": " ".join(x for x in (c["surname"], c["name"], c["patronymic"]) if x),
+    return {"number": paper_number(c["med_card"]), "medCard": c["med_card"], "patient": " ".join(x for x in (c["surname"], c["name"], c["patronymic"]) if x),
             "dob": c["dob"], "admittedAt": c["admitted_at"],
             "dx": c["dx_final"] or c["dx_clinical"] or c["dx_admission"] or "", "comorbid": c["dx_comorbid"] or ""}
 

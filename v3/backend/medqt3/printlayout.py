@@ -388,6 +388,12 @@ def legacy_exam_block(html: str, recorded_at: str, doctor: str) -> list:
 
 # ---------- the sheet heading ----------
 
+def paper_number(med_card: str | None) -> str:
+    """The number printed on paper: the paper case-history number written at admission («№ мед. карты»), not the
+    program's own running number. Left blank to be written by hand when it was not entered."""
+    return (med_card or "").strip() or "________"
+
+
 @dataclass
 class SheetInfo:
     department: str

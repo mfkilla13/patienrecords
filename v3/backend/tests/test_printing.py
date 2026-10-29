@@ -302,3 +302,16 @@ def test_windows_print_keeps_exact_position(env, tmp_path):
             break
         time.sleep(0.25)
     assert abs(ink_rows_mm(out.read_bytes())[0] - ink_rows_mm(original)[0]) < 0.3
+
+
+def test_sheets_carry_the_paper_case_number_not_the_programs(tmp_path):
+    from medqt3 import db as store, demo, printjobs, printlayout
+    conn = store.connect(tmp_path / "t.db")
+    cid = demo.create(conn)
+    with conn:
+        conn.execute("UPDATE cases SET number = '310', med_card = '4521' WHERE id = ?", (cid,))
+    info = printjobs._sheet_info(conn, cid)
+    assert info.number == "4521" and "№ 4521" in info.short
+    with conn:
+        conn.execute("UPDATE cases SET med_card = '' WHERE id = ?", (cid,))
+    assert printjobs._sheet_info(conn, cid).number == printlayout.paper_number("") == "________"

@@ -18,7 +18,7 @@ from . import discharge as dis
 from . import printjobs, settings
 from .clinical import vision as vision_of
 from .printlayout import (BODY, CONTENT_W, FONT, FONT_BOLD, FONT_SEMI, GREY, MARGIN_X, PAGE_H, PAGE_W,
-                          VisionLine, _date_ru, _esc, _eye_mark, _p)
+                          VisionLine, _date_ru, _esc, _eye_mark, _p, paper_number)
 
 MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября",
           "ноября", "декабря"]
@@ -176,7 +176,7 @@ def _page(case: dict, s: dict, label: str = "выписка"):
             c.setFillColor(GREY)
             c.setFont(FONT, 8)
             c.drawRightString(PAGE_W - MARGIN_X, top - 2.6 * mm, s["department"] or "")
-            c.drawRightString(PAGE_W - MARGIN_X, top - 6.4 * mm, f"история болезни № {case['number']}")
+            c.drawRightString(PAGE_W - MARGIN_X, top - 6.4 * mm, f"история болезни № {paper_number(case['medCard'])}")
             c.setFillColor("black")
         c.setFillColor(GREY)
         c.setFont(FONT, 7.5)

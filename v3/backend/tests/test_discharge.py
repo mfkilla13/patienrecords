@@ -119,7 +119,7 @@ def test_empty_29_field_does_not_take_the_next_line():
     assert discharge.after_label(plain, "Куда направляется выписка") == ""
 
 
-def test_recommendations_from_the_last_diary_go_into_the_epicrisis(tmp_path):
+def test_recommendations_from_the_last_diary_go_into_the_discharge(tmp_path):
     from fastapi.testclient import TestClient
     from medqt3 import db as store, demo
     from medqt3.api import create_app
@@ -132,5 +132,5 @@ def test_recommendations_from_the_last_diary_go_into_the_epicrisis(tmp_path):
             "recommendations": "Тобрекс 1 кап. 4 р/д 7 дней"}
     assert client.post(f"/api/cases/{cid}/diaries", json=data).status_code in (200, 201)
     d = client.get(f"/api/cases/{cid}/discharge").json()
-    assert d["form"]["epicrisis"] == "Рекомендации: Тобрекс 1 кап. 4 р/д 7 дней"
+    assert d["form"]["recommendations"] == "Тобрекс 1 кап. 4 р/д 7 дней" and d["form"]["epicrisis"] == ""
     assert d["sources"]["diaryRecommendations"]["date"] == "2026-10-29"

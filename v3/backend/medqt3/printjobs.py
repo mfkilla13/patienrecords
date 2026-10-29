@@ -151,7 +151,7 @@ def _block(r: sqlite3.Row, doctor: str) -> list:
 
 def _sheet_info(conn: sqlite3.Connection, case_id: str) -> printlayout.SheetInfo:
     """What the heading of a fresh sheet shows: department, institution and the patient."""
-    c = conn.execute("SELECT c.number, c.admitted_at, p.surname, p.name, p.patronymic, p.dob FROM cases c"
+    c = conn.execute("SELECT c.number, c.med_card, c.admitted_at, p.surname, p.name, p.patronymic, p.dob FROM cases c"
                      " JOIN patients p ON p.id = c.patient_id WHERE c.id = ?", (case_id,)).fetchone()
     s = settings.get(conn)
     lines = [ln.strip() for ln in s["org_header"].splitlines() if ln.strip()]
@@ -160,9 +160,9 @@ def _sheet_info(conn: sqlite3.Connection, case_id: str) -> printlayout.SheetInfo
     return printlayout.SheetInfo(
         department=s["department"] or "Офтальмологическое отделение", org_line=org,
         patient=" ".join(x for x in (c["surname"], c["name"], c["patronymic"]) if x),
-        dob=printlayout._date_ru(c["dob"]) if c["dob"] else "", number=c["number"],
+        dob=printlayout._date_ru(c["dob"]) if c["dob"] else "", number=printlayout.paper_number(c["med_card"]),
         admitted=printlayout._date_ru(c["admitted_at"]) if c["admitted_at"] else "",
-        short=f"{c['surname']} {initials} · история № {c['number']}".replace("  ", " "))
+        short=f"{c['surname']} {initials} · история № {printlayout.paper_number(c['med_card'])}".replace("  ", " "))
 
 
 def _selected(conn: sqlite3.Connection, case_id: str, record_ids: list[str]) -> list[sqlite3.Row]:
