@@ -54,6 +54,7 @@ export interface StudyView {
   date: string | null;
   unparsedDate: string | null;
   summary: string;
+  flags?: string[];
 }
 
 export interface Step {
@@ -294,6 +295,45 @@ export interface DischargeDraft {
   };
 }
 
+export interface StudyField { key: string; label: string; unit: string; range: [number, number] | null; kind: string }
+
+export interface Study {
+  id: string;
+  date: string | null;
+  unparsedDate: string | null;
+  type: string;
+  name: string;
+  fields: Record<string, string>;
+  text: string;
+  result: string;
+  flags: string[];
+}
+
+export interface StudyList {
+  locked: boolean;
+  studies: Study[];
+  plan: { name: string; done: boolean; type: string }[];
+  forms: Record<string, StudyField[]>;
+  types: string[];
+}
+
+export interface StudyIn { date: string; type: string; fields: Record<string, string>; name: string; text: string }
+
+export interface Prescription {
+  id: string; category: string; name: string; method: string; freq: string;
+  dateFrom: string | null; dateTo: string | null; active: boolean;
+}
+
+export interface PrescriptionList {
+  locked: boolean;
+  items: Prescription[];
+  categories: Record<string, string>;
+  plain: string[];
+  templates: Record<string, string[]>;
+  methods: string[];
+  freqs: string[];
+}
+
 export class ApiError extends Error {}
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -371,6 +411,21 @@ export const api = {
   archive: (caseId: string) => request<{ ok: true }>("POST", `/api/cases/${encodeURIComponent(caseId)}/archive`),
   unarchive: (caseId: string) => request<{ ok: true }>("POST", `/api/cases/${encodeURIComponent(caseId)}/unarchive`),
   reopen: (caseId: string) => request<{ ok: true }>("POST", `/api/cases/${encodeURIComponent(caseId)}/reopen`),
+  studies: (caseId: string) => get<StudyList>(`/api/cases/${encodeURIComponent(caseId)}/studies`),
+  saveStudy: (caseId: string, s: StudyIn, id: string | null) =>
+    id
+      ? request<{ id: string }>("PUT", `/api/studies/${encodeURIComponent(id)}`, s)
+      : request<{ id: string }>("POST", `/api/cases/${encodeURIComponent(caseId)}/studies`, s),
+  deleteStudy: (id: string) => request<{ ok: true }>("DELETE", `/api/studies/${encodeURIComponent(id)}`),
+  prescriptions: (caseId: string) => get<PrescriptionList>(`/api/cases/${encodeURIComponent(caseId)}/prescriptions`),
+  addPrescriptions: (caseId: string, p: { category: string; names: string[]; method: string; freq: string; date_from: string | null; date_to: string | null }) =>
+    request<{ ids: string[] }>("POST", `/api/cases/${encodeURIComponent(caseId)}/prescriptions`, p),
+  updatePrescription: (id: string, p: { name: string; method: string; freq: string; date_from: string | null; date_to: string | null }) =>
+    request<{ id: string }>("PUT", `/api/prescriptions/${encodeURIComponent(id)}`, p),
+  cancelPrescription: (id: string) => request<{ ok: true }>("POST", `/api/prescriptions/${encodeURIComponent(id)}/cancel`),
+  deletePrescription: (id: string) => request<{ ok: true }>("DELETE", `/api/prescriptions/${encodeURIComponent(id)}`),
+  savePrescriptionTemplates: (templates: Record<string, string[]>) =>
+    request<Record<string, string[]>>("PUT", "/api/prescription-templates", { templates }),
   settings: () => get<Settings>("/api/settings"),
   saveSettings: (s: Settings) => request<Settings>("PUT", "/api/settings", s),
 };

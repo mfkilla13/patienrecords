@@ -34,6 +34,8 @@
 }
 
 * { box-sizing: border-box; }
+/* Space for the scrollbar is always kept, so a page does not shift sideways when its height crosses the window. */
+html { scrollbar-gutter: stable; }
 body { margin: 0; background: var(--bg); }
 a { color: var(--accent); }
 a:hover { color: var(--accent-hover); }

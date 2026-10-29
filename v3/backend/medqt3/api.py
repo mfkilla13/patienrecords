@@ -14,7 +14,8 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, admission, clinical, diaries, discharge, dischargeprint, exams, printjobs, settings
+from . import (__version__, admission, clinical, diaries, discharge, dischargeprint, exams, prescriptions,
+               printjobs, settings, studies)
 from . import db as store
 
 class PrintJobIn(BaseModel):
@@ -134,9 +135,9 @@ def case_card(conn: sqlite3.Connection, case_id: str, today: date | None = None)
         (case_id,),
     ).fetchall()
     records = [clinical.record_view(r) for r in rows if r["kind"] != "passport"]
-    studies = [clinical.study_view(s) for s in conn.execute(
+    study_rows = [studies.view(s) for s in conn.execute(
         "SELECT * FROM studies WHERE case_id = ? AND deleted_at IS NULL ORDER BY study_date DESC", (case_id,))]
-    prescriptions = [dict(p) for p in conn.execute(
+    prescription_rows = [dict(p) for p in conn.execute(
         "SELECT id, category, name, method, freq, date_from, date_to FROM prescriptions"
         " WHERE case_id = ? AND deleted_at IS NULL ORDER BY date_from", (case_id,))]
     print_state = conn.execute("SELECT sheet, used_mm, last_printed_at FROM print_state WHERE case_id = ?",
@@ -156,8 +157,8 @@ def case_card(conn: sqlite3.Connection, case_id: str, today: date | None = None)
         {"key": "exam", "title": "Первичный осмотр", "sub": "заполнен" if exam else "не заполнен",
          "state": "done" if exam else "now"},
         {"key": "studies", "title": "Обследования",
-         "sub": f"{len(studies)} из {len(planned)}" if planned else f"{len(studies)}",
-         "state": "done" if studies and len(studies) >= len(planned) else ("now" if exam else "todo")},
+         "sub": f"{len(study_rows)} из {len(planned)}" if planned else f"{len(study_rows)}",
+         "state": "done" if study_rows and len(study_rows) >= len(planned) else ("now" if exam else "todo")},
         {"key": "operation", "title": "Операция",
          "sub": operations[0]["recordedAt"] if operations else "не было",
          "state": "done" if operations else "todo"},
@@ -187,8 +188,9 @@ def case_card(conn: sqlite3.Connection, case_id: str, today: date | None = None)
         "latestVision": latest_vision,
         "steps": steps,
         "records": records,
-        "studies": studies,
-        "prescriptions": prescriptions,
+        "studies": [{"id": x["id"], "kind": x["name"], "date": x["date"], "unparsedDate": x["unparsedDate"],
+                     "summary": x["result"].replace("\n", "; "), "flags": x["flags"]} for x in study_rows],
+        "prescriptions": prescription_rows,
         "unprinted": sum(1 for r in records if r["kind"] in PRINTABLE_KINDS and not r["printedAt"]),
         "printState": dict(print_state) if print_state else None,
     }
@@ -374,6 +376,57 @@ def create_app(db_path: Path | None = None) -> FastAPI:
     def post_reopen(case_id: str):
         _dis(discharge.reopen, case_id)
         return {"ok": True}
+
+    def _st(fn, *args):
+        return _call(studies.StudyError, fn, *args)
+
+    @app.get("/api/cases/{case_id}/studies")
+    def get_studies(case_id: str):
+        return _st(studies.listing, case_id)
+
+    @app.post("/api/cases/{case_id}/studies", status_code=201)
+    def post_study(case_id: str, body: studies.StudyIn):
+        return {"id": _st(studies.create, case_id, body)}
+
+    @app.put("/api/studies/{study_id}")
+    def put_study(study_id: str, body: studies.StudyIn):
+        _st(studies.update, study_id, body)
+        return {"id": study_id}
+
+    @app.delete("/api/studies/{study_id}")
+    def delete_study(study_id: str):
+        _st(studies.delete, study_id)
+        return {"ok": True}
+
+    def _rx(fn, *args):
+        return _call(prescriptions.PrescriptionError, fn, *args)
+
+    @app.get("/api/cases/{case_id}/prescriptions")
+    def get_prescriptions(case_id: str):
+        return _rx(prescriptions.listing, case_id)
+
+    @app.post("/api/cases/{case_id}/prescriptions", status_code=201)
+    def post_prescriptions(case_id: str, body: prescriptions.PrescriptionIn):
+        return {"ids": _rx(prescriptions.create, case_id, body)}
+
+    @app.put("/api/prescriptions/{pid}")
+    def put_prescription(pid: str, body: prescriptions.PrescriptionEdit):
+        _rx(prescriptions.update, pid, body)
+        return {"id": pid}
+
+    @app.post("/api/prescriptions/{pid}/cancel")
+    def post_prescription_cancel(pid: str, on: str | None = None):
+        _rx(prescriptions.cancel, pid, on)
+        return {"ok": True}
+
+    @app.delete("/api/prescriptions/{pid}")
+    def delete_prescription(pid: str):
+        _rx(prescriptions.delete, pid)
+        return {"ok": True}
+
+    @app.put("/api/prescription-templates")
+    def put_prescription_templates(body: prescriptions.TemplatesIn):
+        return prescriptions.save_templates(conn, body)
 
     @app.get("/api/settings")
     def get_settings():

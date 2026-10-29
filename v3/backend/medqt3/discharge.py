@@ -18,6 +18,7 @@ from html import unescape
 from pydantic import BaseModel, Field, field_validator
 
 from . import clinical
+from . import studies as studies_mod
 from . import db as store
 from . import exam as exam_mod
 from .importer import to_date
@@ -156,8 +157,9 @@ def after_label(plain: str, label: str) -> str:
 _NAME = re.compile(r"^([А-яA-Za-zёЁ][А-яA-Za-zёЁ-]*)")
 
 
-def treatment_summary(exam: dict | None, diaries: list[tuple[str, dict]]) -> str:
-    """Drug names from the exam's and the diaries' treatment basis, first word only, no repeats (as 2.9)."""
+def treatment_summary(exam: dict | None, diaries: list[tuple[str, dict]], drugs: list[str] = ()) -> str:
+    """Drug names from the exam's and the diaries' treatment basis, first word only, no repeats (as 2.9),
+    then the drugs on the prescription sheet (2.9 had no working sheet to take them from)."""
     seen: set[str] = set()
     names: list[str] = []
 
@@ -174,6 +176,10 @@ def treatment_summary(exam: dict | None, diaries: list[tuple[str, dict]]) -> str
     take((exam or {}).get("treatment"))
     for _, d in reversed(diaries):          # oldest first, so the list follows the stay
         take(d.get("basis"))
+    for name in drugs:
+        if name.strip() and name.strip() not in seen:
+            seen.add(name.strip())
+            names.append(name.strip())
     return ", ".join(names)
 
 
@@ -261,7 +267,9 @@ def draft(conn: sqlite3.Connection, case_id: str) -> dict:
             "discharge_date": now.date().isoformat(), "discharge_time": now.strftime("%H:%M"),
             "outcome": OUTCOMES[0],
             "final_diagnosis": c["dx_clinical"] or c["dx_admission"],
-            "treatment_summary": treatment_summary(exam, diaries),
+            "treatment_summary": treatment_summary(exam, diaries, [r["name"] for r in conn.execute(
+                "SELECT name FROM prescriptions WHERE case_id = ? AND category = 'drugs' AND deleted_at IS NULL"
+                " ORDER BY COALESCE(date_from, ''), created_at", (case_id,))]),
             "discharge_local": local_at_admission,
             **(_vision_of(last_vis[1]) if last_vis else {}),
         })
@@ -273,7 +281,7 @@ def draft(conn: sqlite3.Connection, case_id: str) -> dict:
         if prev is not None:
             form["workplace"] = _s(_from_legacy(prev).get("workplace"))
 
-    studies = [clinical.study_view(s) for s in conn.execute(
+    study_rows = [studies_mod.view(s) for s in conn.execute(
         "SELECT * FROM studies WHERE case_id = ? AND deleted_at IS NULL ORDER BY study_date", (case_id,))]
 
     return {
@@ -293,9 +301,10 @@ def draft(conn: sqlite3.Connection, case_id: str) -> dict:
             "complaints": complaints,
             "lastDiary": {"date": last_text[0][:10], **{e: _s(last_text[1].get(f"{e}_text")) for e in ("od", "os", "ou")}}
                          if last_text else None,
+            # «10.04.2026 ОАК: Hb 128; ...» — the line 2.9 inserted into the epicrisis
             "studies": [{"id": s["id"], "line": " ".join(x for x in [
-                _date_ru(s["date"]) if s["date"] else (s["unparsedDate"] or ""), s["kind"]] if x)
-                + (f": {s['summary']}" if s["summary"] else "")} for s in studies],
+                _date_ru(s["date"]) if s["date"] else (s["unparsedDate"] or ""), s["name"]] if x)
+                + (f": {s['result'].replace(chr(10), '; ')}" if s["result"] else "")} for s in study_rows],
             "recentRecommendations": _recent(conn, "recommendations"),
             "recentDestinations": _recent_destinations(conn),
         },

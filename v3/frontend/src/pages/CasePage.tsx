@@ -326,12 +326,19 @@ export function CasePage() {
 
           {tab === "studies" && (
             <>
-              <div className="cs-main-head"><h2>Исследования</h2></div>
+              <div className="cs-main-head">
+                <h2>Исследования</h2>
+                <div style={{ flex: 1 }} />
+                <Link to={`/case/${card.caseId}/studies`} className="btn small primary">
+                  {card.status === "archived" ? "Открыть" : "+ Добавить / изменить"}
+                </Link>
+              </div>
               {card.studies.map((s) => (
                 <article className="rec" key={s.id}>
                   <div className="rec-head">
                     <span className="rec-date">{s.date ? shortDate(s.date) : "без даты"}</span>
                     <b>{s.kind}</b>
+                    {s.flags && s.flags.length > 0 && <span className="pill sm tone-amber">{s.flags.join(" · ")}</span>}
                   </div>
                   <p className="rec-line">{s.summary || <span className="muted">без результата</span>}</p>
                   {s.unparsedDate && (
@@ -347,9 +354,15 @@ export function CasePage() {
 
           {tab === "prescriptions" && (
             <>
-              <div className="cs-main-head"><h2>Назначения</h2></div>
+              <div className="cs-main-head">
+                <h2>Назначения</h2>
+                <div style={{ flex: 1 }} />
+                <Link to={`/case/${card.caseId}/prescriptions`} className="btn small primary">
+                  {card.status === "archived" ? "Открыть" : "Лист назначений"}
+                </Link>
+              </div>
               {card.prescriptions.length === 0 ? (
-                <p className="muted">Назначений нет. В старой версии лист назначений не заполнялся.</p>
+                <p className="muted">Назначений нет.</p>
               ) : (
                 card.prescriptions.map((x) => (
                   <article className="rec" key={x.id}>

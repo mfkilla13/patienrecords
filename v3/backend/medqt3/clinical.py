@@ -40,14 +40,6 @@ TREATMENT_LABELS = {
     "antithrombotic": "Антитромбической цели",
 }
 
-STUDY_FIELD_LABELS = {
-    "number": "№", "result": "", "results": "", "value": "глюкоза", "note": "прим.", "titer": "титр",
-    "comment": "", "hemoglobin": "Hb", "rbc": "Эр", "wbc": "Лейк", "platelets": "Тр", "esr": "СОЭ",
-    "stab": "п/я", "segmented": "с/я", "eosinophils": "эоз", "lymphocytes": "лимф", "monocytes": "мон",
-    "color_index": "ЦП", "gravity": "уд. вес", "ph": "pH", "protein": "белок", "glucose": "сахар",
-    "leukocytes": "лейк", "erythrocytes": "эр", "epithelium": "эпит", "salts": "соли", "bacteria": "бакт",
-}
-
 WITH_CORRECTION = "с коррекцией"
 
 
@@ -214,23 +206,3 @@ def record_view(row) -> dict:
         if row["kind"] == "other" and row["html_legacy"]:
             view["kindLabel"] = row["html_legacy"].split(":", 1)[0][:60] or "Запись"
     return view
-
-
-def study_view(row) -> dict:
-    data = json.loads(row["data_json"]) if row["data_json"] else {}
-    fields = data.get("fields") or {}
-    parts = []
-    for key, value in fields.items():
-        value = _s(value)
-        if value:
-            label = STUDY_FIELD_LABELS.get(key, key)
-            parts.append(f"{label} {value}".strip())
-    if not parts and _s(data.get("text")):
-        parts.append(_s(data["text"]))
-    return {
-        "id": row["id"],
-        "kind": row["kind"],
-        "date": row["study_date"],
-        "unparsedDate": data.get("unparsed_date"),
-        "summary": " · ".join(parts),
-    }

@@ -3,6 +3,8 @@ import { AdmissionPage } from "./pages/AdmissionPage";
 import { CasePage } from "./pages/CasePage";
 import { ExamPage } from "./pages/ExamPage";
 import { DischargePage } from "./pages/DischargePage";
+import { PrescriptionsPage } from "./pages/PrescriptionsPage";
+import { StudiesPage } from "./pages/StudiesPage";
 import { DepartmentPage } from "./pages/DepartmentPage";
 import { DiaryPage } from "./pages/DiaryPage";
 import { PrintPage } from "./pages/PrintPage";
@@ -46,6 +48,8 @@ export function App() {
         <Route path="/case/:caseId/new" element={<PlaceholderPage title="Новая запись" />} />
         <Route path="/case/:caseId/print" element={<PrintPage />} />
         <Route path="/case/:caseId/discharge" element={<DischargePage />} />
+        <Route path="/case/:caseId/studies" element={<StudiesPage />} />
+        <Route path="/case/:caseId/prescriptions" element={<PrescriptionsPage />} />
         <Route path="/admission" element={<AdmissionPage />} />
         <Route path="/case/:caseId/exam" element={<ExamPage />} />
         <Route path="/round" element={<RoundPage />} />
