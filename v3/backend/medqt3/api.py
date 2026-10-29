@@ -15,9 +15,14 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import (__version__, admission, archive, backups, clinical, diaries, dicts, discharge, dischargeprint, exams,
+from . import (__version__, admission, archive, backups, checks, clinical, diaries, dicts, discharge, dischargeprint, exams,
                prescriptions, paths, printjobs, records, report, reportdoc, rxprint, settings, stats, studies)
 from . import db as store
+
+class CheckOkIn(BaseModel):
+    check: str
+    item: str
+
 
 class PrintJobIn(BaseModel):
     recordIds: list[str]
@@ -139,6 +144,7 @@ def department(conn: sqlite3.Connection, today: date | None = None) -> dict:
                                  " AND substr(discharged_at, 1, 10) = ?", t),
         "dischargedMonth": count("SELECT COUNT(*) FROM cases WHERE deleted_at IS NULL AND status != 'active'"
                                  " AND substr(discharged_at, 1, 7) = ?", t[:7]),
+        "issues": checks.count(conn, today),
     }
     return {
         "today": today.isoformat(),
@@ -537,6 +543,15 @@ def create_app(db_path: Path | None = None, auto_backup: bool = False) -> FastAP
     @app.delete("/api/operation-templates")
     def delete_operation_template(name: str):
         return records.delete_template(conn, name)
+
+    @app.get("/api/checks")
+    def get_checks():
+        return checks.compute(conn)
+
+    @app.post("/api/checks/confirm")
+    def confirm_check(body: CheckOkIn):
+        checks.confirm(conn, body.check, body.item)
+        return checks.compute(conn)
 
     @app.get("/api/stats")
     def get_stats(date_from: str = "", date_to: str = ""):

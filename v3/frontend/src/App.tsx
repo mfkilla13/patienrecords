@@ -16,6 +16,7 @@ import { RoundPage } from "./pages/RoundPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { StatsPage } from "./pages/StatsPage";
 import { CaseEditPage } from "./pages/CaseEditPage";
+import { ChecksPage } from "./pages/ChecksPage";
 import { ReportPage } from "./pages/ReportPage";
 import { NewRecordPage, RecordPage } from "./pages/RecordPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
@@ -69,6 +70,7 @@ export function App() {
         <Route path="/round" element={<RoundPage />} />
         <Route path="/archive" element={<ArchivePage />} />
         <Route path="/stats" element={<StatsPage />} />
+        <Route path="/checks" element={<ChecksPage />} />
         <Route path="/report" element={<ReportPage />} />
         <Route path="/dictionaries" element={<SettingsPage />} />
         <Route path="*" element={<PlaceholderPage title="Страница не найдена" />} />

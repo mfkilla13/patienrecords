@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AdmissionIn, api, Dictionaries, PatientMatch } from "../api";
-import { fullDate, plural, todayIso } from "../format";
+import { dobProblem, fullDate, plural, todayIso } from "../format";
 import "./admission.css";
 
 type Eye = "OD" | "OS" | "OU" | "";
@@ -68,6 +68,9 @@ export function AdmissionPage() {
     setError(null);
     if (!form.patientId && !form.surname.trim()) return setError("Укажите фамилию");
     if (!form.dxAdmission.trim()) return setError("Укажите диагноз при поступлении");
+    const dob = locked ? null : dobProblem(form.dob);
+    if (dob?.block) return setError(dob.text);
+    if (dob && !window.confirm(`${dob.text}. Всё верно, сохранить так?`)) return;
     setSaving(true);
     try {
       const res = await api.admit({ ...form, dxAdmission: withEye(form.dxAdmission, eye) });
@@ -139,9 +142,10 @@ export function AdmissionPage() {
               <label className="lbl">Отчество <input className="in" value={form.patronymic} onChange={(e) => set("patronymic", e.target.value)} readOnly={locked} /></label>
               <label className="lbl">Дата рождения
                 <span className="ad-row">
-                  <input className="in" type="date" value={form.dob ?? ""} onChange={(e) => set("dob", e.target.value || null)} readOnly={locked} />
-                  {years != null && <span className="pill tone-tint">{years} {plural(years, "год", "года", "лет")}</span>}
+                  <input className="in" type="date" value={form.dob ?? ""} max={todayIso()} onChange={(e) => set("dob", e.target.value || null)} readOnly={locked} />
+                  {years != null && years >= 0 && <span className="pill tone-tint">{years} {plural(years, "год", "года", "лет")}</span>}
                 </span>
+                {dobProblem(form.dob) && <span className="pill tone-amber" role="status" style={{ alignSelf: "flex-start" }}>{dobProblem(form.dob)!.text}</span>}
               </label>
               <label className="lbl">Населённый пункт
                 <input className="in" list="ad-cities" value={form.city} onChange={(e) => set("city", e.target.value)} />

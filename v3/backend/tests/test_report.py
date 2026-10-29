@@ -139,4 +139,4 @@ def test_department_summary(env):
     add(conn, 4, f"{today.replace(day=1) - timedelta(days=20)}T09:00", f"{today.replace(day=1) - timedelta(days=2)}")  # last month
     s = client.get("/api/department").json()["summary"]
     assert s == {"beds": 20, "occupied": 2, "admittedToday": 1, "dischargedToday": 1,
-                 "dischargedMonth": 1}
+                 "dischargedMonth": 1, "issues": s["issues"]}

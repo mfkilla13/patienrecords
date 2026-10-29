@@ -41,6 +41,11 @@ function Summary({ s, today }: { s: Department["summary"]; today: string }) {
       <div className="dep-sum"><span>Поступили сегодня</span><b>{s.admittedToday}</b></div>
       <div className="dep-sum"><span>Выписаны сегодня</span><b>{s.dischargedToday}</b></div>
       <div className="dep-sum"><span>Выписано за {MONTH.format(new Date(today + "T00:00"))}</span><b>{s.dischargedMonth}</b></div>
+      <Link to="/checks" className={"dep-sum dep-issues" + (s.issues ? " warn" : "")}
+        aria-label={s.issues ? `Проверка данных: неточностей ${s.issues}` : "Проверка данных: неточностей нет"}>
+        <span>Проверка данных</span>
+        {s.issues ? <b>{s.issues} <small>{plural(s.issues, "неточность", "неточности", "неточностей")}</small></b> : <b className="dep-issues-ok">✓ <small>всё чисто</small></b>}
+      </Link>
     </div>
   );
 }

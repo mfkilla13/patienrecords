@@ -19,7 +19,7 @@ export interface DepartmentPatient {
 export interface Department {
   today: string;
   patients: DepartmentPatient[];
-  summary: { beds: number | null; occupied: number; admittedToday: number; dischargedToday: number; dischargedMonth: number };
+  summary: { beds: number | null; occupied: number; admittedToday: number; dischargedToday: number; dischargedMonth: number; issues: number };
   counts: { all: number; noDiary: number; unprinted: number; discharged: number };
 }
 
@@ -455,6 +455,10 @@ async function send<T>(method: string, path: string, body?: BodyInit, headers?: 
   return res.json() as Promise<T>;
 }
 
+export interface CheckItem { item: string; caseId: string; number: string; fio: string; detail: string; link: string }
+export interface CheckGroup { key: string; title: string; hint: string; fix: string; items: CheckItem[] }
+export interface Checks { total: number; confirmed: number; groups: CheckGroup[] }
+
 const get = <T,>(path: string) => request<T>("GET", path);
 
 export const api = {
@@ -562,6 +566,8 @@ export const api = {
   reportDocxUrl: (from: string, to: string) => `/api/report.docx?${new URLSearchParams({ date_from: from, date_to: to }).toString()}`,
   setReportGroup: (caseId: string, group: string) =>
     request<{ ok: true }>("PUT", `/api/cases/${encodeURIComponent(caseId)}/report-group`, { group }),
+  checks: () => get<Checks>("/api/checks"),
+  confirmCheck: (check: string, item: string) => request<Checks>("POST", "/api/checks/confirm", { check, item }),
   stats: (from: string, to: string) =>
     get<Stats>(`/api/stats?${new URLSearchParams({ date_from: from, date_to: to }).toString()}`),
   settings: () => get<Settings>("/api/settings"),

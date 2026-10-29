@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { AdmissionIn, api, Dictionaries } from "../api";
-import { plural, todayIso } from "../format";
+import { dobProblem, plural, todayIso } from "../format";
 import "./diary.css";
 import "./record.css";
 
@@ -30,6 +30,9 @@ export function CaseEditPage() {
 
   const save = async () => {
     if (!form) return;
+    const dob = dobProblem(form.dob);
+    if (dob?.block) return setError(dob.text);
+    if (dob && !window.confirm(`${dob.text}. Всё верно, сохранить так?`)) return;
     setSaving(true);
     try {
       await api.saveCaseEdit(caseId, form);
@@ -77,6 +80,7 @@ export function CaseEditPage() {
               <label className="lbl">Отчество{input("patronymic", { maxLength: 80 })}</label>
               <label className="lbl">Дата рождения
                 <input className="in" type="date" value={form.dob ?? ""} max={todayIso()} onChange={(e) => set("dob", e.target.value || null)} />
+                {dobProblem(form.dob) && <span className="pill tone-amber" role="status" style={{ alignSelf: "flex-start" }}>{dobProblem(form.dob)!.text}</span>}
               </label>
               <label className="lbl">Населённый пункт{input("city", { list: "ce-cities", maxLength: 120 })}</label>
               <label className="lbl">Улица{input("street", { list: "ce-streets", maxLength: 160 })}</label>

@@ -166,3 +166,11 @@ def test_exam_date_and_time_are_checked(tmp_path):
     admitted = d["case"]["admittedAt"][:10]
     assert put(visit_date=admitted, visit_time="9:05").status_code == 200
     assert client.get(f"/api/cases/{cid}/exam-draft").json()["existing"]["data"]["visit_time"] == "09:05"
+
+
+def test_admission_refuses_a_birth_date_after_admission(client):
+    r = admit(client, dob="2099-01-01")
+    assert r.status_code == 422 and "Дата рождения" in r.json()["detail"]
+    r = admit(client, dob="2026-10-30", admittedDate="2026-10-29")
+    assert r.status_code == 422
+    assert admit(client, dob="2026-03-01").status_code == 201    # this year is only a warning in the form

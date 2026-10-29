@@ -106,6 +106,8 @@ def admit(conn: sqlite3.Connection, a: AdmissionIn) -> dict:
         raise AdmissionError(422, "Нет такого способа госпитализации")
     if a.residence not in RESIDENCE:
         raise AdmissionError(422, "Нет такого варианта места жительства")
+    if not a.patientId and a.dob and (a.dob > date.today().isoformat() or a.dob > a.admittedDate):
+        raise AdmissionError(422, "Дата рождения позже даты поступления — проверьте год")
     ts = store.now_iso()
     with conn:
         if a.patientId:
@@ -185,7 +187,8 @@ def save_edit(conn: sqlite3.Connection, case_id: str, a: AdmissionIn) -> dict:
         raise AdmissionError(422, f"Дата поступления позже даты выписки ({_ru(c['discharged_at'])})")
     first = conn.execute("SELECT MIN(substr(recorded_at, 1, 10)) FROM records WHERE case_id = ? AND deleted_at IS NULL"
                          " AND kind NOT IN ('passport', 'discharge_summary')", (case_id,)).fetchone()[0]
-    if first and a.admittedDate > first:
+    # Only when the date is moved: an old 2.9 stay with such a record can still have its other fields fixed.
+    if first and a.admittedDate > first and a.admittedDate != (c["admitted_at"] or "")[:10]:
         raise AdmissionError(422, f"В истории есть записи раньше этой даты (от {_ru(first)}) — поступление не может быть позже")
     if a.channel and a.channel not in CHANNELS:
         raise AdmissionError(422, "Нет такого способа госпитализации")

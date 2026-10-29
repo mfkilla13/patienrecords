@@ -35,6 +35,15 @@ export function fullDate(iso: string | null): string {
   return `${d}.${m}.${y}`;
 }
 
+/** What is wrong with a birth date: a date in the future is refused, this year's is almost always the year left unchanged. */
+export function dobProblem(dob: string | null): { block: boolean; text: string } | null {
+  if (!dob) return null;
+  const today = todayIso();
+  if (dob > today) return { block: true, text: "Дата рождения в будущем — проверьте год" };
+  if (dob.slice(0, 4) === today.slice(0, 4)) return { block: false, text: `Год рождения ${dob.slice(0, 4)} — проверьте год` };
+  return null;
+}
+
 /** 1 запись, 2 записи, 5 записей */
 export function plural(n: number, one: string, few: string, many: string): string {
   const mod10 = n % 10;
