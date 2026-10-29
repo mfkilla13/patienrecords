@@ -40,6 +40,7 @@ def main() -> None:
     threading.Thread(target=server.run, daemon=True).start()
     url = f"http://127.0.0.1:{port}"
     _wait_ready(url)
+    webview.settings["ALLOW_DOWNLOADS"] = True    # «Выгрузить в Excel» asks where to save the file
     webview.create_window("MedQT", url, width=1440, height=940, min_size=(1024, 700))
     webview.start()
     server.should_exit = True

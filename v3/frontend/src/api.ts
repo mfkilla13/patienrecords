@@ -334,6 +334,24 @@ export interface PrescriptionList {
   freqs: string[];
 }
 
+export interface ArchiveRow {
+  caseId: string; number: string; patient: string; dob: string | null; dx: string; eye: string; groups: string[];
+  admittedAt: string | null; dischargedAt: string | null; days: number | null; outcome: string;
+}
+
+export interface ArchiveResult {
+  total: number; found: number; page: number; pages: number; size: number;
+  rows: ArchiveRow[];
+  periods: { value: string; label: string }[];
+  dxGroups: { value: string; count: number }[];
+  outcomes: { value: string; count: number }[];
+}
+
+export interface ArchiveQuery { q: string; period: string; dx: string; outcome: string; page?: number }
+
+const archiveParams = (a: ArchiveQuery) =>
+  new URLSearchParams(Object.entries(a).filter(([, v]) => v !== "" && v !== undefined).map(([k, v]) => [k, String(v)])).toString();
+
 export class ApiError extends Error {}
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -426,6 +444,8 @@ export const api = {
   deletePrescription: (id: string) => request<{ ok: true }>("DELETE", `/api/prescriptions/${encodeURIComponent(id)}`),
   savePrescriptionTemplates: (templates: Record<string, string[]>) =>
     request<Record<string, string[]>>("PUT", "/api/prescription-templates", { templates }),
+  archiveList: (a: ArchiveQuery) => get<ArchiveResult>(`/api/archive?${archiveParams(a)}`),
+  archiveCsvUrl: (a: ArchiveQuery) => `/api/archive.csv?${archiveParams(a)}`,
   settings: () => get<Settings>("/api/settings"),
   saveSettings: (s: Settings) => request<Settings>("PUT", "/api/settings", s),
 };

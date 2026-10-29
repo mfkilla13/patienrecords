@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import (__version__, admission, clinical, diaries, discharge, dischargeprint, exams, prescriptions,
+from . import (__version__, admission, archive, clinical, diaries, discharge, dischargeprint, exams, prescriptions,
                printjobs, settings, studies)
 from . import db as store
 
@@ -427,6 +427,15 @@ def create_app(db_path: Path | None = None) -> FastAPI:
     @app.put("/api/prescription-templates")
     def put_prescription_templates(body: prescriptions.TemplatesIn):
         return prescriptions.save_templates(conn, body)
+
+    @app.get("/api/archive")
+    def get_archive(q: str = "", period: str = "all", dx: str = "", outcome: str = "", page: int = 1):
+        return archive.search(conn, q, period, dx, outcome, page)
+
+    @app.get("/api/archive.csv")
+    def get_archive_csv(q: str = "", period: str = "all", dx: str = "", outcome: str = ""):
+        return Response(archive.export_csv(conn, q, period, dx, outcome), media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="{archive.export_name(period)}"'})
 
     @app.get("/api/settings")
     def get_settings():

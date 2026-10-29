@@ -1,0 +1,18 @@
+.ar-filters { padding: 18px 20px; display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
+.ar-q { flex: 2 1 300px; }
+.ar-q .search { font-weight: 400; }
+.ar-sel { flex: 1 1 170px; }
+.ar-pill { border-radius: 999px; }
+.ar-reset { height: 46px; padding: 0 12px; }
+
+.ar-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 18px 24px 12px; font-size: 17px; }
+.ar-head .muted { font-size: 15px; }
+.ar-table { min-width: 940px; }
+.ar-name { color: var(--text); font-weight: 600; text-decoration: none; }
+.ar-name:hover { color: var(--accent-hover); }
+.ar-dob { font-size: 13px; margin-left: 8px; white-space: nowrap; }
+
+.ar-pages { display: flex; align-items: center; gap: 6px; padding: 14px 24px 18px; border-top: 1px solid var(--line); flex-wrap: wrap; font-size: 14px; }
+.ar-pg { width: 42px; height: 42px; border-radius: 50%; border: none; background: var(--chip); color: var(--text); font-size: 15px; cursor: pointer; }
+.ar-pg.on { background: var(--accent); color: #fff; font-weight: 600; }
+.ar-pg:disabled { background: var(--bg); color: var(--dash); cursor: default; }
