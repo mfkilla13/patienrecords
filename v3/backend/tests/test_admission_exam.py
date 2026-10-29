@@ -54,7 +54,7 @@ def test_readmission_reuses_patient_and_refuses_a_second_active_case(client):
     assert client.get("/api/patients/search", params={"q": "Кузнецова Анна"}).json()[0]["city"] == "Бендеры"
 
     # The earlier exam can be taken over: the draft offers it without measurements.
-    data = exam.normal_exam() | {"visit_date": "2026-10-01", "complaints": "раньше", "vis_od": "0,2"}
+    data = exam.normal_exam() | {"visit_date": "2026-10-29", "complaints": "раньше", "vis_od": "0,2"}
     conn2 = store.connect(client.db_path)
     with conn2:
         conn2.execute("UPDATE cases SET status = 'active' WHERE id = ?", (first["caseId"],))
@@ -144,3 +144,25 @@ def test_template_save_and_use_count(client):
     assert t["useCount"] == 1
     client.delete(f"/api/exam-templates/{tid}")
     assert all(t["id"] != tid for t in client.get(f"/api/cases/{case_id}/exam-draft").json()["templates"])
+
+
+def test_exam_date_and_time_are_checked(tmp_path):
+    from fastapi.testclient import TestClient
+    from medqt3 import db as store
+    from medqt3 import demo
+    from medqt3.api import create_app
+
+    path = tmp_path / "t.db"
+    conn = store.connect(path)
+    cid = demo.create(conn)
+    client = TestClient(create_app(path))
+    d = client.get(f"/api/cases/{cid}/exam-draft").json()
+    rid, data = d["existing"]["id"], d["existing"]["data"]
+    put = lambda **kw: client.put(f"/api/cases/{cid}/exam/{rid}", json={"data": {**data, **kw}})  # noqa: E731
+    r = put(visit_date="2026-01-01")
+    assert r.status_code == 422 and "раньше даты поступления" in r.json()["detail"]
+    assert put(visit_date="2099-01-01").status_code == 422
+    assert put(visit_time="9.30").status_code == 422
+    admitted = d["case"]["admittedAt"][:10]
+    assert put(visit_date=admitted, visit_time="9:05").status_code == 200
+    assert client.get(f"/api/cases/{cid}/exam-draft").json()["existing"]["data"]["visit_time"] == "09:05"

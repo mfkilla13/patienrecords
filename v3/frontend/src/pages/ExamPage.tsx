@@ -268,7 +268,7 @@ export function ExamPage() {
         </div>
         {f && !readOnly && (
           <>
-            <label className="ex-inline">Дата <input className="in white" type="date" value={f.visit_date} onChange={(e) => setField("visit_date", e.target.value)} /></label>
+            <label className="ex-inline">Дата <input className="in white" type="date" value={f.visit_date} min={draft.case.admittedAt?.slice(0, 10)} max={todayIso()} onChange={(e) => setField("visit_date", e.target.value)} /></label>
             <label className="ex-inline">Время <input className="in white" style={{ width: 84 }} value={f.visit_time} onChange={(e) => setField("visit_time", e.target.value)} /></label>
           </>
         )}

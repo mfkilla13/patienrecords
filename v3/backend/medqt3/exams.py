@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
+from datetime import date
 
 from pydantic import BaseModel, Field
 
@@ -132,8 +134,18 @@ def save(conn: sqlite3.Connection, case_id: str, data: dict, record_id: str | No
     visit = to_date(data.get("visit_date")) or (c["admitted_at"] or "")[:10]
     if not visit:
         raise ExamError(422, "Укажите дату осмотра")
+    admitted = (c["admitted_at"] or "")[:10]
+    if admitted and visit < admitted:
+        raise ExamError(422, f"Дата осмотра раньше даты поступления ({admitted[8:10]}.{admitted[5:7]}.{admitted[:4]})")
+    if visit > date.today().isoformat():
+        raise ExamError(422, "Дата осмотра не может быть позже сегодняшней")
     data["visit_date"] = visit
     time = (data.get("visit_time") or "").strip()
+    if time and not re.fullmatch(r"([01]?\d|2[0-3]):[0-5]\d", time):
+        raise ExamError(422, "Время осмотра — в виде ЧЧ:ММ, например 09:30")
+    if len(time) == 4:
+        time = "0" + time
+    data["visit_time"] = time
     recorded_at = f"{visit}T{time}" if time else visit
     html = exam.render_html(data, settings.get(conn)["doctor_signature"])
     ts = store.now_iso()
