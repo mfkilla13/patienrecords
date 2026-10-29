@@ -19,6 +19,7 @@ export interface DepartmentPatient {
 export interface Department {
   today: string;
   patients: DepartmentPatient[];
+  summary: { beds: number | null; occupied: number; admittedToday: number; dischargedToday: number; dischargedMonth: number };
   counts: { all: number; noDiary: number; unprinted: number; discharged: number };
 }
 

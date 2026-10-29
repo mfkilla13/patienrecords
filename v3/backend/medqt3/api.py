@@ -123,9 +123,27 @@ def department(conn: sqlite3.Connection, today: date | None = None) -> dict:
             "unprinted": r["unprinted"],
         })
     patients.sort(key=lambda x: (int(x["number"]) if x["number"].isdigit() else 0, x["number"]))
+
+    # The summary above the list (to look at, not to filter): beds taken by those still lying in the
+    # department, today's admissions and discharges, discharges this month (2.9 showed «Выписано за мм.гг»).
+    def count(sql: str, *args) -> int:
+        return conn.execute(sql, args).fetchone()[0]
+
+    t = today.isoformat()
+    beds = settings.get(conn).get("beds") or ""
+    summary = {
+        "beds": int(beds) if beds.isdigit() else None,
+        "occupied": sum(1 for p in patients if p["stage"] != "discharged"),
+        "admittedToday": count("SELECT COUNT(*) FROM cases WHERE deleted_at IS NULL AND substr(admitted_at, 1, 10) = ?", t),
+        "dischargedToday": count("SELECT COUNT(*) FROM cases WHERE deleted_at IS NULL AND status != 'active'"
+                                 " AND substr(discharged_at, 1, 10) = ?", t),
+        "dischargedMonth": count("SELECT COUNT(*) FROM cases WHERE deleted_at IS NULL AND status != 'active'"
+                                 " AND substr(discharged_at, 1, 7) = ?", t[:7]),
+    }
     return {
         "today": today.isoformat(),
         "patients": patients,
+        "summary": summary,
         "counts": {
             "all": len(patients),
             "noDiary": sum(1 for p in patients if not p["diaryToday"] and p["stage"] != "discharged"),

@@ -14,12 +14,36 @@ const STAGES: Record<Stage, { label: string; tone: string }> = {
 
 const AVATAR_TONES = ["tone-green", "tone-blue", "tone-brown", "tone-violet"];
 
-const FILTERS: { key: Filter; label: string; tone: string }[] = [
-  { key: "all", label: "Все в отделении", tone: "tone-dark" },
-  { key: "noDiary", label: "Нет дневника за сегодня", tone: "tone-green" },
-  { key: "unprinted", label: "Записи ждут печати", tone: "tone-amber" },
-  { key: "discharged", label: "Выписаны, ждут архива", tone: "tone-blue" },
+const FILTERS: { key: Filter; label: string }[] = [
+  { key: "all", label: "Все" },
+  { key: "noDiary", label: "Нет дневника за сегодня" },
+  { key: "unprinted", label: "Ждут печати" },
+  { key: "discharged", label: "Выписаны, ждут архива" },
 ];
+
+const MONTH = new Intl.DateTimeFormat("ru-RU", { month: "long" });
+
+/** The summary above the list: only to look at — filtering is done by the chips over the table. */
+function Summary({ s, today }: { s: Department["summary"]; today: string }) {
+  const share = s.beds ? s.occupied / s.beds : null;
+  return (
+    <div className="dep-summary" aria-label="Сводка отделения">
+      <div className="dep-sum">
+        <span>Занято коек</span>
+        <b>{s.occupied}{s.beds ? <small> из {s.beds}</small> : null}</b>
+        {share != null && (
+          <span className={"dep-meter" + (share > 1 ? " over" : "")} role="meter" aria-valuemin={0} aria-valuemax={s.beds ?? 0}
+            aria-valuenow={s.occupied} aria-label="Занятость коек">
+            <i style={{ width: `${Math.min(100, share * 100)}%` }} />
+          </span>
+        )}
+      </div>
+      <div className="dep-sum"><span>Поступили сегодня</span><b>{s.admittedToday}</b></div>
+      <div className="dep-sum"><span>Выписаны сегодня</span><b>{s.dischargedToday}</b></div>
+      <div className="dep-sum"><span>Выписано за {MONTH.format(new Date(today + "T00:00"))}</span><b>{s.dischargedMonth}</b></div>
+    </div>
+  );
+}
 
 function matches(p: DepartmentPatient, filter: Filter, query: string): boolean {
   if (filter === "noDiary" && (p.diaryToday || p.stage === "discharged")) return false;
@@ -61,11 +85,6 @@ export function DepartmentPage() {
     <main className="page dep">
       <div className="dep-head">
         <h1>Отделение</h1>
-        {data && (
-          <span className="count-badge">
-            {data.counts.all} {plural(data.counts.all, "пациент", "пациента", "пациентов")}
-          </span>
-        )}
         <div style={{ flex: 1 }} />
         <Link to="/round" className="btn white">
           Обход
@@ -81,24 +100,20 @@ export function DepartmentPage() {
         </Link>
       </div>
 
-      <div className="dep-tiles" role="group" aria-label="Быстрые фильтры">
-        {FILTERS.map((f) => (
-          <button
-            key={f.key}
-            type="button"
-            className={"dep-tile" + (filter === f.key ? " on" : "")}
-            aria-pressed={filter === f.key}
-            onClick={() => setFilter(f.key)}
-          >
-            <span className={"dep-tile-num " + f.tone}>{data ? data.counts[f.key] : "…"}</span>
-            <span>{f.label}</span>
-          </button>
-        ))}
-      </div>
+      {data && <Summary s={data.summary} today={data.today} />}
 
       <section className="card dep-table-card" aria-label="Пациенты в отделении">
         <div className="dep-toolbar">
-          <label className="search" style={{ flex: "1 1 320px", maxWidth: 460 }}>
+          <div className="dep-chips" role="group" aria-label="Показать">
+            {FILTERS.map((f) => (
+              <button key={f.key} type="button" className={"chip" + (filter === f.key ? " on" : "")}
+                aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}>
+                {f.label} <span className="chip-n">{data ? data.counts[f.key] : "…"}</span>
+              </button>
+            ))}
+          </div>
+          <div style={{ flex: 1 }} />
+          <label className="search" style={{ flex: "1 1 260px", maxWidth: 380 }}>
             <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="muted">
               <circle cx="11" cy="11" r="7" />
               <path d="M21 21l-4.3-4.3" />
@@ -111,10 +126,6 @@ export function DepartmentPage() {
               onChange={(e) => setQuery(e.target.value)}
             />
           </label>
-          <div style={{ flex: 1 }} />
-          <span className="muted">
-            Сортировка: <b style={{ color: "var(--text)", fontWeight: 600 }}>по номеру истории</b>
-          </span>
         </div>
 
         <div style={{ overflowX: "auto" }}>

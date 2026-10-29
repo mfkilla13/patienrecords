@@ -3,10 +3,17 @@
 .dep-head h1 { margin: 0; font-size: 32px; font-weight: 700; letter-spacing: -0.01em; }
 .dep-message { padding: 24px; }
 
-.dep-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
-.dep-tile { display: flex; align-items: center; gap: 14px; padding: 16px 18px; border-radius: 20px; border: none; background: var(--surface); text-align: left; cursor: pointer; box-shadow: var(--shadow-card); color: var(--text-2); }
-.dep-tile.on { box-shadow: 0 0 0 2px var(--accent), 0 8px 24px rgba(40, 30, 20, 0.08); }
-.dep-tile-num { flex: none; width: 52px; height: 52px; border-radius: 16px; display: inline-flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; }
+.dep-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.dep-sum { background: var(--surface); border-radius: 20px; padding: 14px 18px; display: flex; flex-direction: column; gap: 2px; box-shadow: var(--shadow-card); }
+.dep-sum > span:first-child { font-size: 13px; color: var(--muted); }
+.dep-sum b { font-size: 28px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; }
+.dep-sum small { font-size: 16px; font-weight: 500; color: var(--muted); }
+.dep-meter { display: block; height: 6px; border-radius: 3px; background: var(--chip); margin-top: 6px; overflow: hidden; }
+.dep-meter i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+.dep-meter.over i { background: var(--amber-text); }
+.dep-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.dep-chips .chip { height: 34px; font-size: 13px; }
+@media (max-width: 900px) { .dep-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 .dep-table-card { overflow: hidden; }
 .dep-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 18px 20px 14px; }

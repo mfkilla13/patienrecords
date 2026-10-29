@@ -127,3 +127,16 @@ def test_admission_channel_and_protocol_kind(env):
     got = client.get(f"/api/records/{rid}").json()
     assert (got["op_type"], got["urgency"], got["complication"]) == ("Антиглаукоматозные операции", "планово", False)
     assert client.get(f"/api/cases/{cid}/discharge").json()["form"]["report_group"] == "Глаукома"
+
+
+def test_department_summary(env):
+    client, conn = env
+    from datetime import date, timedelta
+    today = date.today()
+    add(conn, 1, f"{today}T09:00", None, status="active")
+    add(conn, 2, f"{today - timedelta(days=5)}T09:00", None, status="active")
+    add(conn, 3, f"{today - timedelta(days=9)}T09:00", f"{today}", status="discharged")
+    add(conn, 4, f"{today.replace(day=1) - timedelta(days=20)}T09:00", f"{today.replace(day=1) - timedelta(days=2)}")  # last month
+    s = client.get("/api/department").json()["summary"]
+    assert s == {"beds": 20, "occupied": 2, "admittedToday": 1, "dischargedToday": 1,
+                 "dischargedMonth": 1}
