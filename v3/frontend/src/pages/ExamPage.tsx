@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, Dictionaries, ExamData, ExamDraft } from "../api";
-import { VIS_STATUSES, WITH_CORRECTION } from "../diary";
+import { stateTone, VIS_STATUSES, WITH_CORRECTION } from "../diary";
 import { fullDate, shortDate, todayIso } from "../format";
 import { MultiChips } from "../components/MultiChips";
 import { PickInput } from "../components/PickInput";
@@ -444,7 +444,7 @@ export function ExamPage() {
                           <div className="ex-grid3">
                             {Object.entries(opts.objective).map(([k, o]) => (
                               <label key={k} className="lbl">{OBJECTIVE_LABELS[k] ?? k}
-                                <select className="in" value={f[k]} disabled={Boolean(readOnly)} onChange={(e) => setField(k, e.target.value)}>
+                                <select className={"in" + (k === "general_state" ? stateTone(f[k]) : "")} value={f[k]} disabled={Boolean(readOnly)} onChange={(e) => setField(k, e.target.value)}>
                                   {[...new Set([...o, f[k]])].map((v) => <option key={v}>{v}</option>)}
                                 </select>
                               </label>

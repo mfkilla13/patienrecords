@@ -1,8 +1,9 @@
 """Diaries: create, edit, and the daily round.
 
 Diary data keeps the 2.9.x JSON keys (bp, vis_od, vgd_od, od_text, ...), so old
-and new diaries are read by the same code. Measurements (АД, ЧСС, пульс, Vis,
-ВГД) are never copied from a previous day: they must be taken again.
+and new diaries are read by the same code. The forms fill in the previous day's
+measurements (АД, ЧСС, пульс, Vis, ВГД) but mark them «как вчера» and ask before
+saving any left unchanged, so a value nobody took today is not saved unnoticed.
 """
 
 from __future__ import annotations

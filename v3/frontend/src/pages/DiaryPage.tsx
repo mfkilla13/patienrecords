@@ -3,9 +3,8 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, CaseCard, DiaryData, DiaryDraft } from "../api";
 import { VisionFractions } from "../components/VisionFractions";
 import {
-  basisLines, COPIED_FIELDS, copyFrom, emptyDiary, GENERAL_STATES, hasMeasurements, toVision,
-  TREATMENT_PRESETS, VIS_STATUSES, WITH_CORRECTION,
-} from "../diary";
+  basisLines, COPIED_FIELDS, copyFrom, emptyDiary, GENERAL_STATES, hasMeasurements, stateTone, toVision,
+  TREATMENT_PRESETS, VIS_STATUSES, WITH_CORRECTION, fillYesterday, MEASUREMENTS, Measurement, stillYesterday, yesterdayQuestion } from "../diary";
 import { fullDate, shortDate, todayIso } from "../format";
 import { PickInput, PickKind } from "../components/PickInput";
 import "./diary.css";
@@ -24,6 +23,8 @@ export function DiaryPage() {
   const [draft, setDraft] = useState<DiaryDraft | null>(null);
   const [form, setForm] = useState<DiaryData>(() => emptyDiary(todayIso()));
   const [copied, setCopied] = useState<{ date: string; values: Partial<DiaryData> } | null>(null);
+  // Measurements filled in from the previous diary, marked until changed or confirmed (see fillYesterday).
+  const [yest, setYest] = useState<{ date: string; keys: Measurement[] } | null>(null);
   const [locked, setLocked] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -45,6 +46,14 @@ export function DiaryPage() {
     api.diaryDraft(caseId, form.date).then(setDraft, () => setDraft(null));
   }, [caseId, form.date]);
 
+  useEffect(() => {
+    if (editing || yest || !draft?.previous) return;
+    const { form: filled, keys } = fillYesterday(form, draft.previous.data);
+    setForm(filled);
+    setYest({ date: draft.previous.date, keys });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, editing]);
+
   const set = (k: Field, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   const setStatus = (eye: "od" | "os", v: string) =>
@@ -58,13 +67,22 @@ export function DiaryPage() {
     if (!draft?.previous) return;
     const next = copyFrom(draft.previous.data, form.date);
     next.time = form.time;
+    for (const k of MEASUREMENTS) next[k] = form[k];     // the copy brings the text; the numbers are already here
     setForm(next);
     setCopied({ date: draft.previous.date, values: Object.fromEntries(COPIED_FIELDS.map((k) => [k, next[k]])) });
+  };
+
+  /** The whole diary as yesterday: its text is copied and the filled-in numbers are confirmed. */
+  const sameAsYesterday = () => {
+    if (!copied) copyPrevious();
+    if (yest) setYest({ ...yest, keys: [] });
   };
 
   /** After a copy, fields the doctor has changed are highlighted. */
   const changed = (k: Field) => copied !== null && k in copied.values && copied.values[k] !== form[k];
   const prev = draft?.previous?.data;
+  const asYesterday = yest ? stillYesterday(form, prev, yest.keys) : [];
+  const asis = (k: Field) => asYesterday.includes(k as Measurement);
   // Previous values are shown as grey placeholders; narrow Vis/ВГД fields get the bare value.
   const hint = (k: Field) => (prev && prev[k] ? (k.startsWith("vis_") || k.startsWith("vgd_") ? prev[k] : `вчера ${prev[k]}`) : "");
   const vision = useMemo(() => toVision(form), [form]);
@@ -75,6 +93,7 @@ export function DiaryPage() {
   const save = async () => {
     setError(null);
     if (!hasMeasurements(form) && !window.confirm("Vis и ВГД не введены. Сохранить дневник без них?")) return;
+    if (asYesterday.length && !window.confirm(yesterdayQuestion(asYesterday, "Дневник: "))) return;
     setSaving(true);
     try {
       if (recordId) await api.updateDiary(recordId, form);
@@ -89,7 +108,8 @@ export function DiaryPage() {
   const input = (k: Field, extra?: { placeholder?: string; width?: number; inputMode?: "decimal" | "numeric"; pick?: PickKind }) => extra?.pick ? (
     <PickInput
       kind={extra.pick}
-      className={"in" + (changed(k) ? " changed" : "")}
+      className={"in" + (changed(k) ? " changed" : "") + (asis(k) ? " asis" : "")}
+      title={asis(k) ? "как вчера — измените или нажмите «Сегодня так же»" : undefined}
       value={form[k]}
       onChange={(v) => set(k, v)}
       placeholder={extra.placeholder}
@@ -141,25 +161,16 @@ export function DiaryPage() {
           <Link to={`/case/${caseId}/diary/${draft!.today!.recordId}`} className="btn white small">Открыть его</Link>
         </div>
       )}
-      {!readOnly && !editing && draft?.previous && !copied && (
+      {/* Yesterday's numbers are filled in and marked until changed or confirmed. «Как вчера» takes the whole diary:
+          copies yesterday's text, complaints and treatment and confirms the numbers — the banner goes. */}
+      {!readOnly && !editing && draft?.previous && (!copied || asYesterday.length > 0) && (
         <div className="dy-banner dy-copy">
           <span style={{ flex: 1 }}>
-            Есть дневник от <b>{shortDate(draft.previous.date)}</b>. Скопировать текст, лечение и статусы зрения?
-            Vis, ВГД, АД и пульс не копируются — их нужно ввести заново.
+            Есть дневник от <b>{shortDate(draft.previous.date)}</b>.
+            {asYesterday.length > 0 && <> Цифры подставлены из него и подсвечены, пока вы их не измените.</>}
+            {" "}«Как вчера» возьмёт весь дневник: и текст, и цифры.
           </span>
-          <button type="button" className="btn white small" onClick={copyPrevious}>
-            Скопировать вчерашний
-          </button>
-        </div>
-      )}
-      {copied && (
-        <div className="dy-banner dy-copy">
-          <span style={{ flex: 1 }}>
-            <b>Заполнено по дневнику от {shortDate(copied.date)}.</b> Изменённые поля подсвечены, измерения введите заново.
-          </span>
-          <button type="button" className="btn white small" onClick={() => { setForm(emptyDiary(form.date)); setCopied(null); }}>
-            Очистить форму
-          </button>
+          <button type="button" className="btn white small" onClick={sameAsYesterday}>Как вчера</button>
         </div>
       )}
 
@@ -177,7 +188,7 @@ export function DiaryPage() {
               <span className={"seg" + (changed("general_state") ? " changed" : "")} role="radiogroup">
                 {GENERAL_STATES.map((s) => (
                   <button key={s} type="button" role="radio" aria-checked={form.general_state === s}
-                    className={form.general_state === s ? "on" : ""} onClick={() => set("general_state", s)} disabled={readOnly}>
+                    className={form.general_state === s ? "on" + stateTone(s) : ""} onClick={() => set("general_state", s)} disabled={readOnly}>
                     {s}
                   </button>
                 ))}
@@ -202,7 +213,7 @@ export function DiaryPage() {
                       <td className="dy-eye">{eye.toUpperCase()}</td>
                       <td>{input(`vis_${eye}`, { width: 90, placeholder: hint(`vis_${eye}`), inputMode: "decimal", pick: "vis" })}</td>
                       <td>
-                        <select className="in" style={{ width: 200 }} value={form[`vis_correction_${eye}`]}
+                        <select className={"in" + (asis(`vis_correction_${eye}`) ? " asis" : "")} style={{ width: 200 }} value={form[`vis_correction_${eye}`]}
                           onChange={(e) => setStatus(eye, e.target.value)} disabled={readOnly}>
                           {VIS_STATUSES.map((s) => <option key={s}>{s}</option>)}
                         </select>

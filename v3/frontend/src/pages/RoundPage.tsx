@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, DiaryData, RoundRow } from "../api";
-import { copyFrom, emptyDiary, hasMeasurements, TREATMENT_PRESETS, WITH_CORRECTION } from "../diary";
+import { copyFrom, emptyDiary, hasMeasurements, TREATMENT_PRESETS, WITH_CORRECTION, fillYesterday, Measurement, stillYesterday, yesterdayQuestion } from "../diary";
 import { initials, longToday, plural, shortDate, todayIso } from "../format";
 import { PickInput, PickKind } from "../components/PickInput";
 import "./round.css";
@@ -14,6 +14,7 @@ type RowState = {
   printed: boolean;
   saving: boolean;
   error: string | null;
+  yest: Measurement[];          // measurements filled in from the previous diary (see fillYesterday)
 };
 
 const AVATAR_TONES = ["tone-green", "tone-blue", "tone-brown", "tone-violet"];
@@ -28,10 +29,12 @@ function initialState(row: RoundRow, day: string): RowState {
       printed: Boolean(row.today.printedAt),
       saving: false,
       error: null,
+      yest: [],
     };
   }
-  const form = row.previous ? copyFrom(row.previous.data, day) : emptyDiary(day);
-  return { form, recordId: null, saved: false, editing: true, printed: false, saving: false, error: null };
+  if (!row.previous) return { form: emptyDiary(day), recordId: null, saved: false, editing: true, printed: false, saving: false, error: null, yest: [] };
+  const { form, keys } = fillYesterday(copyFrom(row.previous.data, day), row.previous.data);
+  return { form, recordId: null, saved: false, editing: true, printed: false, saving: false, error: null, yest: keys };
 }
 
 const sameText = (a: DiaryData, b: DiaryData) =>
@@ -48,12 +51,13 @@ function FracInput(props: {
   onChange: (eye: "od" | "os", v: string) => void;
   disabled: boolean;
   need: boolean;
+  asis?: { od: boolean; os: boolean };     // still as yesterday
 }) {
   return (
     <span className={"rd-frac" + (props.need ? " need" : "")}>
-      <PickInput kind={props.kind} wrapClassName="rd-frac-od" aria-label={`${props.label} OD`} value={props.od} placeholder={props.phOd}
+      <PickInput kind={props.kind} wrapClassName="rd-frac-od" className={props.asis?.od ? "asis" : undefined} aria-label={`${props.label} OD`} value={props.od} placeholder={props.phOd}
         inputMode="decimal" onChange={(v) => props.onChange("od", v)} disabled={props.disabled} />
-      <PickInput kind={props.kind} wrapClassName="rd-frac-os" aria-label={`${props.label} OS`} value={props.os} placeholder={props.phOs}
+      <PickInput kind={props.kind} wrapClassName="rd-frac-os" className={props.asis?.os ? "asis" : undefined} aria-label={`${props.label} OS`} value={props.os} placeholder={props.phOs}
         inputMode="decimal" onChange={(v) => props.onChange("os", v)} disabled={props.disabled} />
     </span>
   );
@@ -83,6 +87,8 @@ export function RoundPage() {
   const save = async (row: RoundRow) => {
     const st = state[row.caseId];
     if (!hasMeasurements(st.form) && !window.confirm(`${row.surname}: Vis и ВГД не введены. Сохранить дневник без них?`)) return;
+    const asis = stillYesterday(st.form, row.previous?.data, st.yest);
+    if (asis.length && !window.confirm(yesterdayQuestion(asis, `${row.surname}: `))) return;
     patch(row.caseId, { saving: true, error: null });
     try {
       const res = st.recordId ? await api.updateDiary(st.recordId, st.form) : await api.createDiary(row.caseId, st.form);
@@ -118,7 +124,8 @@ export function RoundPage() {
       </div>
 
       <div className="rd-note">
-        Текст подставлен из последнего дневника. <b>Vis, ВГД и АД не копируются</b> — их нужно ввести; серым показаны прошлые значения.
+        Текст и цифры подставлены из последнего дневника. <b>Vis, ВГД и АД подсвечены, пока вы их не измените</b> — при «Готов»
+        программа спросит про неизменённые.
         Подробности (ЧСС, коррекция, жалобы) — в полной форме по ссылке «Открыть полностью».
       </div>
 
@@ -130,6 +137,7 @@ export function RoundPage() {
         {visible.map((row, i) => {
           const st = state[row.caseId];
           const f = st.form;
+          const ay = stillYesterday(f, row.previous?.data, st.yest);
           const prev = row.previous?.data;
           const locked = st.printed || (st.saved && !st.editing);
           const stale = row.previousUnchanged && prev && sameText(f, prev);
@@ -149,13 +157,13 @@ export function RoundPage() {
                 </span>
               </span>
               <span className="rd-cell">
-                <FracInput label="Vis" kind="vis" od={f.vis_od} os={f.vis_os} phOd={prev?.vis_od ?? ""} phOs={prev?.vis_os ?? ""}
+                <FracInput label="Vis" kind="vis" asis={{ od: ay.includes("vis_od"), os: ay.includes("vis_os") }} od={f.vis_od} os={f.vis_os} phOd={prev?.vis_od ?? ""} phOs={prev?.vis_os ?? ""}
                   onChange={(e, v) => setField(row.caseId, `vis_${e}`, v)} disabled={locked} need={!locked && !f.vis_od && !f.vis_os} />
                 {status && <span className="rd-status">{status}</span>}
               </span>
-              <FracInput label="ВГД" kind="vgd" od={f.vgd_od} os={f.vgd_os} phOd={prev?.vgd_od ?? ""} phOs={prev?.vgd_os ?? ""}
+              <FracInput label="ВГД" kind="vgd" asis={{ od: ay.includes("vgd_od"), os: ay.includes("vgd_os") }} od={f.vgd_od} os={f.vgd_os} phOd={prev?.vgd_od ?? ""} phOs={prev?.vgd_os ?? ""}
                 onChange={(e, v) => setField(row.caseId, `vgd_${e}`, v)} disabled={locked} need={!locked && !f.vgd_od && !f.vgd_os} />
-              <PickInput kind="bp" className="rd-bp" aria-label="АД" value={f.bp} placeholder={prev?.bp ?? ""} onChange={(v) => setField(row.caseId, "bp", v)} disabled={locked} />
+              <PickInput kind="bp" className={"rd-bp" + (ay.includes("bp") ? " asis" : "")} aria-label="АД" value={f.bp} placeholder={prev?.bp ?? ""} onChange={(v) => setField(row.caseId, "bp", v)} disabled={locked} />
               <span className="rd-text">
                 <input className="rd-txt" aria-label="OD" value={f.od_text} placeholder="OD: …" onChange={(e) => setField(row.caseId, "od_text", e.target.value)} disabled={locked} />
                 <input className="rd-txt" aria-label="OS" value={f.os_text} placeholder="OS: …" onChange={(e) => setField(row.caseId, "os_text", e.target.value)} disabled={locked} />
