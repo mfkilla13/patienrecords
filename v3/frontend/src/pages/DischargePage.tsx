@@ -453,6 +453,11 @@ export function DischargePage() {
             <button type="button" className="chip" disabled={!localLine("od")} onClick={() => insert(localLine("od"))}>Статус OD</button>
             <button type="button" className="chip" disabled={!localLine("os")} onClick={() => insert(localLine("os"))}>Статус OS</button>
             <button type="button" className="chip" onClick={() => insert("OU: ")}>OU:</button>
+            {src.diaryRecommendations && (
+              <button type="button" className="chip" onClick={() => insert(`Рекомендации: ${src.diaryRecommendations!.text}`)}>
+                Рекомендации из дневника {shortDate(src.diaryRecommendations.date)}
+              </button>
+            )}
             {src.lastDiary && (
               <button type="button" className="chip" onClick={() => insert((["od", "os", "ou"] as const).filter((e) => src.lastDiary![e]).map((e) => `${e.toUpperCase()}: ${src.lastDiary![e]}`).join("\n"))}>
                 Из дневника {shortDate(src.lastDiary.date)}

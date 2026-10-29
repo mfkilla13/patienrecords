@@ -260,6 +260,12 @@ export function DiaryPage() {
               <textarea className="ta" rows={2} value={form.discharge_note} onChange={(e) => set("discharge_note", e.target.value)}
                 placeholder="например: швы сняты" disabled={readOnly} />
             </label>
+            {(form.discharge_note.trim() || form.recommendations) && (
+              <label className="lbl">Рекомендации <span className="muted" style={{ fontWeight: 400 }}>при выписке встанут в текст эпикриза</span>
+                <textarea className="ta" rows={3} value={form.recommendations ?? ""} onChange={(e) => set("recommendations", e.target.value)}
+                  placeholder="например: инстилляции Тобрекс 1 кап. 4 р/д 7 дней, наблюдение окулиста по месту жительства" disabled={readOnly} />
+              </label>
+            )}
           </section>
         </div>
 
@@ -282,6 +288,7 @@ export function DiaryPage() {
                 {form.ou_text && <div>OU: {form.ou_text}</div>}
                 {(form.treatment || basis.length > 0) && <div>Лечение {[form.treatment, ...basis].filter(Boolean).join(" ")}</div>}
                 {form.discharge_note && <div>{form.discharge_note}</div>}
+                {form.recommendations && <div>Рекомендации: {form.recommendations}</div>}
                 <div className="dy-sign">Подпись ________</div>
               </div>
             </div>

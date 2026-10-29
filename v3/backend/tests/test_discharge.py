@@ -117,3 +117,20 @@ def test_29_discharge_reads_fields_kept_only_in_its_html(setup):
 def test_empty_29_field_does_not_take_the_next_line():
     plain = discharge.html_plain("<b>Куда направляется выписка:</b> <br><b>Дата выписки:</b> 17.04.2026 15:20<br>")
     assert discharge.after_label(plain, "Куда направляется выписка") == ""
+
+
+def test_recommendations_from_the_last_diary_go_into_the_epicrisis(tmp_path):
+    from fastapi.testclient import TestClient
+    from medqt3 import db as store, demo
+    from medqt3.api import create_app
+    path = tmp_path / "t.db"
+    conn = store.connect(path)
+    cid = demo.create(conn)
+    client = TestClient(create_app(path))
+    draft = client.get(f"/api/cases/{cid}/diary-draft", params={"day": "2026-10-29"}).json()
+    data = {**draft["previous"]["data"], "date": "2026-10-29", "discharge_note": "выписывается",
+            "recommendations": "Тобрекс 1 кап. 4 р/д 7 дней"}
+    assert client.post(f"/api/cases/{cid}/diaries", json=data).status_code in (200, 201)
+    d = client.get(f"/api/cases/{cid}/discharge").json()
+    assert d["form"]["epicrisis"] == "Рекомендации: Тобрекс 1 кап. 4 р/д 7 дней"
+    assert d["sources"]["diaryRecommendations"]["date"] == "2026-10-29"

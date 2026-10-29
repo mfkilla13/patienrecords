@@ -46,6 +46,7 @@ class DiaryIn(BaseModel):
     ou_text: str = ""
     treatment: str = ""
     discharge_note: str = ""
+    recommendations: str = ""            # the last diary before discharge: goes into the epicrisis
     basis: dict = Field(default_factory=dict)
 
     @field_validator("date")

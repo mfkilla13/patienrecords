@@ -47,6 +47,7 @@ export function emptyDiary(date: string): DiaryData {
     ou_text: "",
     treatment: "",
     discharge_note: "",
+    recommendations: "",
     basis: {},
   };
 }

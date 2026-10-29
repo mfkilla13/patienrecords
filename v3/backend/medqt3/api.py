@@ -6,7 +6,7 @@ import re
 import sqlite3
 import threading
 from urllib.parse import quote
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from html import escape
@@ -90,6 +90,31 @@ def _stage(status: str, operated: bool) -> str:
     return "post_op" if operated else "exam"
 
 
+def _week_trend(conn: sqlite3.Connection, today: date, occupied_now: int) -> dict:
+    """The last 7 days (oldest first) behind the daily tiles: beds taken at the end of the day (from the
+    admission day up to the discharge day, as in the statistics; today — the tile's own count), admissions,
+    discharges. The month tile compares months: discharges of the last 6 months (this one so far), and of the
+    previous month up to the same day — a month in progress is only fair against the same part of the last one."""
+    days = [(today - timedelta(days=i)).isoformat() for i in range(6, -1, -1)]
+    rows = conn.execute("SELECT substr(admitted_at, 1, 10) AS a, substr(COALESCE(discharged_at, ''), 1, 10) AS d,"
+                        " status FROM cases WHERE deleted_at IS NULL").fetchall()
+    left = [r["d"] for r in rows if r["status"] != "active" and r["d"]]
+    months = []
+    y, m = today.year, today.month
+    for _ in range(6):
+        months.insert(0, f"{y:04d}-{m:02d}")
+        y, m = (y, m - 1) if m > 1 else (y - 1, 12)
+    return {
+        "days": days,
+        "occupied": [sum(1 for r in rows if r["a"] <= d and not (r["d"] and r["d"] <= d)) for d in days[:-1]] + [occupied_now],
+        "admitted": [sum(1 for r in rows if r["a"] == d) for d in days],
+        "discharged": [sum(1 for x in left if x == d) for d in days],
+        "months": months,
+        "monthTotals": [sum(1 for x in left if x[:7] == m) for m in months],
+        "lastMonthSoFar": sum(1 for x in left if x[:7] == months[-2] and int(x[8:10]) <= today.day),
+    }
+
+
 def department(conn: sqlite3.Connection, today: date | None = None) -> dict:
     today = today or date.today()
     rows = conn.execute(
@@ -150,6 +175,7 @@ def department(conn: sqlite3.Connection, today: date | None = None) -> dict:
         "dischargedMonth": count("SELECT COUNT(*) FROM cases WHERE deleted_at IS NULL AND status != 'active'"
                                  " AND substr(discharged_at, 1, 7) = ?", t[:7]),
         "issues": checks.count(conn, today),
+        "trend": _week_trend(conn, today, sum(1 for p in patients if p["stage"] != "discharged")),
     }
     return {
         "today": today.isoformat(),

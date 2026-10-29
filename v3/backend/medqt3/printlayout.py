@@ -308,6 +308,8 @@ def diary_block(data: dict, recorded_at: str, doctor: str) -> list:
         out.append(_label("Лечение", treatment))
     if (data.get("discharge_note") or "").strip():
         out.append(_p(_esc(data["discharge_note"])))
+    if (data.get("recommendations") or "").strip():
+        out.append(_label("Рекомендации", data["recommendations"]))
     out += [SignLine(doctor or "Подпись"), DashedRule()]
     return out
 

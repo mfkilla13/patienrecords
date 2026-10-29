@@ -114,6 +114,7 @@ def _diary(d: dict) -> dict:
     treatment = " ".join(x for x in [_s(d.get("treatment"))] + _treatment_lines(d.get("basis")) if x)
     _section(sections, "Лечение", treatment)
     _section(sections, "Для выписки", d.get("discharge_note"))
+    _section(sections, "Рекомендации", d.get("recommendations"))
     return {"sections": sections}
 
 

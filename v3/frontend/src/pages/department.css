@@ -4,7 +4,14 @@
 .dep-message { padding: 24px; }
 
 .dep-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
-.dep-sum { background: var(--surface); border-radius: 20px; padding: 14px 18px; display: flex; flex-direction: column; gap: 2px; box-shadow: var(--shadow-card); }
+.dep-sum { position: relative; overflow: hidden; background: var(--surface); border-radius: 20px; padding: 14px 18px; display: flex; flex-direction: column; gap: 2px; box-shadow: var(--shadow-card); }
+.dep-sum > :not(.spark) { position: relative; z-index: 1; }
+.spark { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 30px; }
+.dep-sum:has(.spark) { padding-bottom: 34px; }
+.spark-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; opacity: 0.55; }
+.spark-fill { fill: var(--accent); opacity: 0.08; }
+.delta { font-size: 13px; font-weight: 600; color: var(--text-2); margin-left: 6px; letter-spacing: 0; }
+.delta small { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 4px; }
 .dep-sum > span:first-child { font-size: 13px; color: var(--muted); }
 .dep-sum b { font-size: 28px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; }
 .dep-sum small { font-size: 16px; font-weight: 500; color: var(--muted); }

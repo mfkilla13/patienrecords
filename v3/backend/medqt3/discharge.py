@@ -262,6 +262,8 @@ def draft(conn: sqlite3.Connection, case_id: str) -> dict:
     last_text = next(((at, d) for at, d in diaries
                       if any(_s(d.get(f"{e}_text")) for e in ("od", "os", "ou"))), None)
     complaints = _s((exam or {}).get("complaints")) or after_label(exam_plain, "Жалобы")
+    # Recommendations written in the last diary before discharge («Для выписки» → «Рекомендации»).
+    diary_rec = next(((at, _s(d.get("recommendations"))) for at, d in diaries if _s(d.get("recommendations"))), None)
     comorbid = c["dx_comorbid"] or (exam_mod.comorbid_text(exam) if exam else "")
 
     if existing:
@@ -277,6 +279,7 @@ def draft(conn: sqlite3.Connection, case_id: str) -> dict:
                 "SELECT name FROM prescriptions WHERE case_id = ? AND category = 'drugs' AND deleted_at IS NULL"
                 " ORDER BY COALESCE(date_from, ''), created_at", (case_id,))]),
             "discharge_local": local_at_admission,
+            "epicrisis": f"Рекомендации: {diary_rec[1]}" if diary_rec else "",
             **(_vision_of(last_vis[1]) if last_vis else {}),
         })
         # The workplace rarely changes between stays: take it from the patient's last discharge.
@@ -316,6 +319,7 @@ def draft(conn: sqlite3.Connection, case_id: str) -> dict:
                 _date_ru(s["date"]) if s["date"] else (s["unparsedDate"] or ""), s["name"]] if x)
                 + (f": {s['result'].replace(chr(10), '; ')}" if s["result"] else "")} for s in study_rows],
             "recentRecommendations": _recent(conn, "recommendations"),
+            "diaryRecommendations": {"date": diary_rec[0][:10], "text": diary_rec[1]} if diary_rec else None,
             "recentDestinations": _recent_destinations(conn),
         },
         "options": {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, Department, DepartmentPatient, Stage, UpdateStatus } from "../api";
 import { initials, plural, shortDate } from "../format";
+import { Delta, Sparkline } from "../components/Sparkline";
 import "./department.css";
 
 type Filter = "all" | "noDiary" | "unprinted" | "discharged";
@@ -22,25 +23,33 @@ const FILTERS: { key: Filter; label: string }[] = [
 ];
 
 const MONTH = new Intl.DateTimeFormat("ru-RU", { month: "long" });
+const MONTH_SHORT = new Intl.DateTimeFormat("ru-RU", { month: "short" });
 
 /** The summary above the list: only to look at — filtering is done by the chips over the table. */
 function Summary({ s, today }: { s: Department["summary"]; today: string }) {
   const share = s.beds ? s.occupied / s.beds : null;
+  const t = s.trend;
+  const week = (values: number[], unit: string) => <Sparkline values={values} days={t.days} unit={unit} />;
   return (
     <div className="dep-summary" aria-label="Сводка отделения">
       <div className="dep-sum">
         <span>Занято коек</span>
-        <b>{s.occupied}{s.beds ? <small> из {s.beds}</small> : null}</b>
+        <b>{s.occupied}{s.beds ? <small> из {s.beds}</small> : null} <Delta values={t.occupied} /></b>
         {share != null && (
           <span className={"dep-meter" + (share > 1 ? " over" : "")} role="meter" aria-valuemin={0} aria-valuemax={s.beds ?? 0}
             aria-valuenow={s.occupied} aria-label="Занятость коек">
             <i style={{ width: `${Math.min(100, share * 100)}%` }} />
           </span>
         )}
+        {week(t.occupied, "занято")}
       </div>
-      <div className="dep-sum"><span>Поступили сегодня</span><b>{s.admittedToday}</b></div>
-      <div className="dep-sum"><span>Выписаны сегодня</span><b>{s.dischargedToday}</b></div>
-      <div className="dep-sum"><span>Выписано за {MONTH.format(new Date(today + "T00:00"))}</span><b>{s.dischargedMonth}</b></div>
+      <div className="dep-sum"><span>Поступили сегодня</span><b>{s.admittedToday} <Delta values={t.admitted} /></b>{week(t.admitted, "поступили")}</div>
+      <div className="dep-sum"><span>Выписаны сегодня</span><b>{s.dischargedToday} <Delta values={t.discharged} /></b>{week(t.discharged, "выписаны")}</div>
+      <div className="dep-sum"><span>Выписано за {MONTH.format(new Date(today + "T00:00"))}</span>
+        <b>{s.dischargedMonth} <Delta values={[s.dischargedMonth]} before={t.lastMonthSoFar}
+          against={`к ${MONTH_SHORT.format(new Date(t.months[4] + "-01T00:00"))}`}
+          title={`${MONTH_SHORT.format(new Date(t.months[4] + "-01T00:00"))} к ${Number(today.slice(8, 10))}-му числу: ${t.lastMonthSoFar}, за весь месяц ${t.monthTotals[4]}`} /></b>
+        <Sparkline values={t.monthTotals} days={t.months} unit="выписано" label={(m) => MONTH_SHORT.format(new Date(m + "-01T00:00")) + (m === t.months[5] ? " (пока)" : "")} /></div>
       <Link to="/checks" className={"dep-sum dep-issues" + (s.issues ? " warn" : "")}
         aria-label={s.issues ? `Проверка данных: неточностей ${s.issues}` : "Проверка данных: неточностей нет"}>
         <span>Проверка данных</span>

@@ -19,7 +19,11 @@ export interface DepartmentPatient {
 export interface Department {
   today: string;
   patients: DepartmentPatient[];
-  summary: { beds: number | null; occupied: number; admittedToday: number; dischargedToday: number; dischargedMonth: number; issues: number };
+  summary: { beds: number | null; occupied: number; admittedToday: number; dischargedToday: number; dischargedMonth: number; issues: number;
+    trend: {
+      days: string[]; occupied: number[]; admitted: number[]; discharged: number[];
+      months: string[]; monthTotals: number[]; lastMonthSoFar: number;
+    } };
   counts: { all: number; noDiary: number; unprinted: number; discharged: number };
 }
 
@@ -110,6 +114,7 @@ export interface DiaryData {
   ou_text: string;
   treatment: string;
   discharge_note: string;
+  recommendations: string;
   basis: Record<string, { selected?: string[]; note?: string }>;
 }
 
@@ -294,6 +299,7 @@ export interface DischargeDraft {
     localFrom: string | null;
     complaints: string;
     lastDiary: { date: string; od: string; os: string; ou: string } | null;
+    diaryRecommendations: { date: string; text: string } | null;
     studies: { id: string; line: string }[];
     recentRecommendations: { text: string; dx: string }[];
     recentDestinations: string[];
