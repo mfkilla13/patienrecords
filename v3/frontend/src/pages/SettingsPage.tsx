@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { api, DictName, Settings } from "../api";
 import { BackupsSection } from "./BackupsSection";
 import { DictionarySection } from "./DictionarySection";
+import { applyTheme } from "../theme";
 import "./settings.css";
 
 const DICTIONARIES: [DictName, string][] = [
@@ -47,6 +48,20 @@ export function SettingsPage() {
     setStatus(null);
   };
   const dirty = form && saved && JSON.stringify(form) !== JSON.stringify(saved);
+
+  // The theme switches at once and is saved on its own, apart from the other fields' «Сохранить».
+  const chooseTheme = async (theme: string) => {
+    if (!saved) return;
+    applyTheme(theme);
+    try {
+      const s = await api.saveSettings({ ...saved, theme });
+      setSaved(s);
+      setForm((f) => (f ? { ...f, theme: s.theme } : f));
+    } catch (e) {
+      applyTheme(saved.theme);
+      setStatus({ kind: "error", text: (e as Error).message });
+    }
+  };
 
   const save = async () => {
     if (!form) return;
@@ -120,6 +135,17 @@ export function SettingsPage() {
                 </select>
                 <span className="st-help">Будет выбран в окне печати. Если его не найдётся, программа возьмёт принтер Windows.</span>
               </label>
+              <span />
+
+              <div className="lbl">Тема
+                <span className="seg st-theme" role="radiogroup" aria-label="Тема">
+                  {([["auto", "Как в Windows"], ["light", "Светлая"], ["dark", "Тёмная"]] as const).map(([v, label]) => (
+                    <button key={v} type="button" role="radio" aria-checked={form.theme === v} className={form.theme === v ? "on" : ""}
+                      onClick={() => chooseTheme(v)}>{label}</button>
+                  ))}
+                </span>
+                <span className="st-help">Меняется сразу. Листы и выписка в предпросмотре остаются белыми — это бумага.</span>
+              </div>
               <span />
 
               <label className="lbl">Коек в отделении

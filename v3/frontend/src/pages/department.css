@@ -21,7 +21,7 @@
 .dep-table th { text-align: left; font-size: 13px; font-weight: 500; color: var(--muted); padding: 8px 12px; }
 .dep-table td { padding: 8px 12px; border-top: 1px solid var(--line); height: 62px; }
 .dep-table tbody tr { cursor: pointer; }
-.dep-table tbody tr:hover { background: #faf8f5; }
+.dep-table tbody tr:hover { background: var(--row-hover); }
 .dep-table .num { font-variant-numeric: tabular-nums; }
 .dep-table td.num:first-child { font-weight: 600; color: var(--text-3); }
 .muted-num { color: var(--text-3); }

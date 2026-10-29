@@ -4,6 +4,7 @@ import { api, Dictionaries, ExamData, ExamDraft } from "../api";
 import { VIS_STATUSES, WITH_CORRECTION } from "../diary";
 import { fullDate, shortDate, todayIso } from "../format";
 import { MultiChips } from "../components/MultiChips";
+import { PickInput } from "../components/PickInput";
 import "./exam.css";
 
 type Eye = "od" | "os";
@@ -315,7 +316,7 @@ export function ExamPage() {
                     {(["od", "os"] as Eye[]).map((eye) => (
                       <tr key={eye}>
                         <td className="dy-eye">{eye.toUpperCase()}</td>
-                        <td><input className={"in" + (!f[`vis_${eye}`] ? " need" : "")} style={{ width: 90 }} inputMode="decimal" value={f[`vis_${eye}`]} disabled={Boolean(readOnly)} onChange={(e) => setField(`vis_${eye}`, e.target.value)} /></td>
+                        <td><PickInput kind="vis" className={"in" + (!f[`vis_${eye}`] ? " need" : "")} style={{ width: 90 }} inputMode="decimal" value={f[`vis_${eye}`]} disabled={Boolean(readOnly)} onChange={(v) => setField(`vis_${eye}`, v)} /></td>
                         <td>
                           <select className="in" style={{ width: 190 }} value={f[`vis_correction_${eye}`]} disabled={Boolean(readOnly)}
                             onChange={(e) => edit((d) => { d[`vis_correction_${eye}`] = e.target.value; if (e.target.value !== WITH_CORRECTION) { d[`vis_${eye}_corr`] = ""; d[`vis_${eye}_result`] = ""; } })}>
@@ -325,12 +326,12 @@ export function ExamPage() {
                         <td>
                           {f[`vis_correction_${eye}`] === WITH_CORRECTION ? (
                             <span className="dy-corr">
-                              <input className="in" style={{ width: 90 }} placeholder="+1,5" value={f[`vis_${eye}_corr`]} disabled={Boolean(readOnly)} onChange={(e) => setField(`vis_${eye}_corr`, e.target.value)} />
-                              = <input className="in" style={{ width: 70 }} value={f[`vis_${eye}_result`]} disabled={Boolean(readOnly)} onChange={(e) => setField(`vis_${eye}_result`, e.target.value)} />
+                              <PickInput kind="corr" className="in" style={{ width: 90 }} placeholder="+1,5" value={f[`vis_${eye}_corr`]} disabled={Boolean(readOnly)} onChange={(v) => setField(`vis_${eye}_corr`, v)} />
+                              = <PickInput kind="vis" className="in" style={{ width: 70 }} value={f[`vis_${eye}_result`]} disabled={Boolean(readOnly)} onChange={(v) => setField(`vis_${eye}_result`, v)} />
                             </span>
                           ) : <span className="muted" style={{ fontSize: 13 }}>только при «с коррекцией»</span>}
                         </td>
-                        <td><input className={"in" + (!f[`vgd_${eye}`] ? " need" : "")} style={{ width: 80 }} inputMode="numeric" value={f[`vgd_${eye}`]} disabled={Boolean(readOnly)} onChange={(e) => setField(`vgd_${eye}`, e.target.value)} /></td>
+                        <td><PickInput kind="vgd" className={"in" + (!f[`vgd_${eye}`] ? " need" : "")} style={{ width: 80 }} inputMode="numeric" value={f[`vgd_${eye}`]} disabled={Boolean(readOnly)} onChange={(v) => setField(`vgd_${eye}`, v)} /></td>
                       </tr>
                     ))}
                   </tbody>
@@ -338,12 +339,12 @@ export function ExamPage() {
                 <div className="ex-vitals">
                   <label className="lbl">АД, мм рт. ст.
                     <span className="ex-bp">
-                      <input className={"in" + (!f.bp_sys ? " need" : "")} inputMode="numeric" value={f.bp_sys} disabled={Boolean(readOnly)} onChange={(e) => setField("bp_sys", e.target.value)} />/
-                      <input className="in" inputMode="numeric" value={f.bp_dia} disabled={Boolean(readOnly)} onChange={(e) => setField("bp_dia", e.target.value)} />
+                      <PickInput kind="sys" className={"in" + (!f.bp_sys ? " need" : "")} inputMode="numeric" value={f.bp_sys} disabled={Boolean(readOnly)} onChange={(v) => setField("bp_sys", v)} />/
+                      <PickInput kind="dia" className="in" inputMode="numeric" value={f.bp_dia} disabled={Boolean(readOnly)} onChange={(v) => setField("bp_dia", v)} />
                     </span>
                   </label>
-                  <label className="lbl">ЧСС, уд/мин <input className={"in" + (!f.hr ? " need" : "")} inputMode="numeric" value={f.hr} disabled={Boolean(readOnly)} onChange={(e) => setField("hr", e.target.value)} /></label>
-                  <label className="lbl">Пульс, уд/мин <input className="in" inputMode="numeric" value={f.pulse} disabled={Boolean(readOnly)} onChange={(e) => setField("pulse", e.target.value)} /></label>
+                  <label className="lbl">ЧСС, уд/мин <PickInput kind="rate" className={"in" + (!f.hr ? " need" : "")} inputMode="numeric" value={f.hr} disabled={Boolean(readOnly)} onChange={(v) => setField("hr", v)} /></label>
+                  <label className="lbl">Пульс, уд/мин <PickInput kind="rate" className="in" inputMode="numeric" value={f.pulse} disabled={Boolean(readOnly)} onChange={(v) => setField("pulse", v)} /></label>
                 </div>
               </section>
 

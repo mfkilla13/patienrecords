@@ -5,6 +5,7 @@ import { MultiChips } from "../components/MultiChips";
 import { VisionFractions } from "../components/VisionFractions";
 import { toVision, VIS_STATUSES, WITH_CORRECTION } from "../diary";
 import { fullDate, plural, shortDate } from "../format";
+import { PickInput } from "../components/PickInput";
 import "./exam.css";
 import "./diary.css";
 import "./discharge.css";
@@ -243,7 +244,7 @@ export function DischargePage() {
         {(["od", "os"] as Eye[]).map((eye) => (
           <tr key={eye}>
             <td className="dy-eye">{eye.toUpperCase()}</td>
-            <td><input className="in" style={{ width: 90 }} inputMode="decimal" value={form[`vis_${eye}`]} disabled={ro} onChange={(e) => set(`vis_${eye}`, e.target.value)} /></td>
+            <td><PickInput kind="vis" className="in" style={{ width: 90 }} inputMode="decimal" value={form[`vis_${eye}`]} disabled={ro} onChange={(v) => set(`vis_${eye}`, v)} /></td>
             <td>
               <select className="in" style={{ width: 190 }} value={form[`vis_correction_${eye}`] || "пусто"} disabled={ro}
                 onChange={(e) => {
@@ -257,12 +258,12 @@ export function DischargePage() {
             <td>
               {form[`vis_correction_${eye}`] === WITH_CORRECTION ? (
                 <span className="dy-corr">
-                  <input className="in" style={{ width: 90 }} placeholder="+1,5" value={form[`vis_${eye}_corr`]} disabled={ro} onChange={(e) => set(`vis_${eye}_corr`, e.target.value)} />
-                  = <input className="in" style={{ width: 70 }} value={form[`vis_${eye}_result`]} disabled={ro} onChange={(e) => set(`vis_${eye}_result`, e.target.value)} />
+                  <PickInput kind="corr" className="in" style={{ width: 90 }} placeholder="+1,5" value={form[`vis_${eye}_corr`]} disabled={ro} onChange={(v) => set(`vis_${eye}_corr`, v)} />
+                  = <PickInput kind="vis" className="in" style={{ width: 70 }} value={form[`vis_${eye}_result`]} disabled={ro} onChange={(v) => set(`vis_${eye}_result`, v)} />
                 </span>
               ) : <span className="muted" style={{ fontSize: 13 }}>только при «с коррекцией»</span>}
             </td>
-            <td><input className="in" style={{ width: 80 }} inputMode="numeric" value={form[`vgd_${eye}`]} disabled={ro} onChange={(e) => set(`vgd_${eye}`, e.target.value)} /></td>
+            <td><PickInput kind="vgd" className="in" style={{ width: 80 }} inputMode="numeric" value={form[`vgd_${eye}`]} disabled={ro} onChange={(v) => set(`vgd_${eye}`, v)} /></td>
           </tr>
         ))}
       </tbody>

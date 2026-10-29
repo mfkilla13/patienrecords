@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api, DiaryData, RoundRow } from "../api";
 import { copyFrom, emptyDiary, hasMeasurements, TREATMENT_PRESETS, WITH_CORRECTION } from "../diary";
 import { initials, longToday, plural, shortDate, todayIso } from "../format";
+import { PickInput, PickKind } from "../components/PickInput";
 import "./round.css";
 
 type RowState = {
@@ -39,6 +40,7 @@ const sameText = (a: DiaryData, b: DiaryData) =>
 /** Two stacked inputs, OD over OS — the way the doctor writes a fraction. */
 function FracInput(props: {
   label: string;
+  kind: PickKind;
   od: string;
   os: string;
   phOd: string;
@@ -49,10 +51,10 @@ function FracInput(props: {
 }) {
   return (
     <span className={"rd-frac" + (props.need ? " need" : "")}>
-      <input aria-label={`${props.label} OD`} value={props.od} placeholder={props.phOd} inputMode="decimal"
-        onChange={(e) => props.onChange("od", e.target.value)} disabled={props.disabled} />
-      <input aria-label={`${props.label} OS`} value={props.os} placeholder={props.phOs} inputMode="decimal"
-        onChange={(e) => props.onChange("os", e.target.value)} disabled={props.disabled} />
+      <PickInput kind={props.kind} wrapClassName="rd-frac-od" aria-label={`${props.label} OD`} value={props.od} placeholder={props.phOd}
+        inputMode="decimal" onChange={(v) => props.onChange("od", v)} disabled={props.disabled} />
+      <PickInput kind={props.kind} wrapClassName="rd-frac-os" aria-label={`${props.label} OS`} value={props.os} placeholder={props.phOs}
+        inputMode="decimal" onChange={(v) => props.onChange("os", v)} disabled={props.disabled} />
     </span>
   );
 }
@@ -147,13 +149,13 @@ export function RoundPage() {
                 </span>
               </span>
               <span className="rd-cell">
-                <FracInput label="Vis" od={f.vis_od} os={f.vis_os} phOd={prev?.vis_od ?? ""} phOs={prev?.vis_os ?? ""}
+                <FracInput label="Vis" kind="vis" od={f.vis_od} os={f.vis_os} phOd={prev?.vis_od ?? ""} phOs={prev?.vis_os ?? ""}
                   onChange={(e, v) => setField(row.caseId, `vis_${e}`, v)} disabled={locked} need={!locked && !f.vis_od && !f.vis_os} />
                 {status && <span className="rd-status">{status}</span>}
               </span>
-              <FracInput label="ВГД" od={f.vgd_od} os={f.vgd_os} phOd={prev?.vgd_od ?? ""} phOs={prev?.vgd_os ?? ""}
+              <FracInput label="ВГД" kind="vgd" od={f.vgd_od} os={f.vgd_os} phOd={prev?.vgd_od ?? ""} phOs={prev?.vgd_os ?? ""}
                 onChange={(e, v) => setField(row.caseId, `vgd_${e}`, v)} disabled={locked} need={!locked && !f.vgd_od && !f.vgd_os} />
-              <input className="rd-bp" aria-label="АД" value={f.bp} placeholder={prev?.bp ?? ""} onChange={(e) => setField(row.caseId, "bp", e.target.value)} disabled={locked} />
+              <PickInput kind="bp" className="rd-bp" aria-label="АД" value={f.bp} placeholder={prev?.bp ?? ""} onChange={(v) => setField(row.caseId, "bp", v)} disabled={locked} />
               <span className="rd-text">
                 <input className="rd-txt" aria-label="OD" value={f.od_text} placeholder="OD: …" onChange={(e) => setField(row.caseId, "od_text", e.target.value)} disabled={locked} />
                 <input className="rd-txt" aria-label="OS" value={f.os_text} placeholder="OS: …" onChange={(e) => setField(row.caseId, "os_text", e.target.value)} disabled={locked} />

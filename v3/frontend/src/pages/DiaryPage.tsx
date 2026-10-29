@@ -7,6 +7,7 @@ import {
   TREATMENT_PRESETS, VIS_STATUSES, WITH_CORRECTION,
 } from "../diary";
 import { fullDate, shortDate, todayIso } from "../format";
+import { PickInput, PickKind } from "../components/PickInput";
 import "./diary.css";
 
 type Field = keyof Omit<DiaryData, "basis">;
@@ -85,7 +86,18 @@ export function DiaryPage() {
     }
   };
 
-  const input = (k: Field, extra?: { placeholder?: string; width?: number; inputMode?: "decimal" | "numeric" }) => (
+  const input = (k: Field, extra?: { placeholder?: string; width?: number; inputMode?: "decimal" | "numeric"; pick?: PickKind }) => extra?.pick ? (
+    <PickInput
+      kind={extra.pick}
+      className={"in" + (changed(k) ? " changed" : "")}
+      value={form[k]}
+      onChange={(v) => set(k, v)}
+      placeholder={extra.placeholder}
+      inputMode={extra.inputMode}
+      style={extra.width ? { width: extra.width } : undefined}
+      disabled={readOnly}
+    />
+  ) : (
     <input
       className={"in" + (changed(k) ? " changed" : "")}
       value={form[k]}
@@ -158,9 +170,9 @@ export function DiaryPage() {
               <input className="in" type="date" value={form.date} onChange={(e) => set("date", e.target.value)} disabled={readOnly || editing} />
             </label>
             <label className="lbl">Время {input("time", { placeholder: "сейчас" })}</label>
-            <label className="lbl">АД, мм рт. ст. {input("bp", { placeholder: hint("bp") })}</label>
-            <label className="lbl">ЧСС, уд/мин {input("hr", { placeholder: hint("hr"), inputMode: "numeric" })}</label>
-            <label className="lbl">Пульс, уд/мин {input("pulse", { placeholder: hint("pulse"), inputMode: "numeric" })}</label>
+            <label className="lbl">АД, мм рт. ст. {input("bp", { placeholder: hint("bp"), pick: "bp" })}</label>
+            <label className="lbl">ЧСС, уд/мин {input("hr", { placeholder: hint("hr"), inputMode: "numeric", pick: "rate" })}</label>
+            <label className="lbl">Пульс, уд/мин {input("pulse", { placeholder: hint("pulse"), inputMode: "numeric", pick: "rate" })}</label>
             <div className="lbl" style={{ gridColumn: "span 3" }}>Общее состояние
               <span className={"seg" + (changed("general_state") ? " changed" : "")} role="radiogroup">
                 {GENERAL_STATES.map((s) => (
@@ -188,7 +200,7 @@ export function DiaryPage() {
                   return (
                     <tr key={eye}>
                       <td className="dy-eye">{eye.toUpperCase()}</td>
-                      <td>{input(`vis_${eye}`, { width: 90, placeholder: hint(`vis_${eye}`), inputMode: "decimal" })}</td>
+                      <td>{input(`vis_${eye}`, { width: 90, placeholder: hint(`vis_${eye}`), inputMode: "decimal", pick: "vis" })}</td>
                       <td>
                         <select className="in" style={{ width: 200 }} value={form[`vis_correction_${eye}`]}
                           onChange={(e) => setStatus(eye, e.target.value)} disabled={readOnly}>
@@ -198,13 +210,13 @@ export function DiaryPage() {
                       <td>
                         {corrected ? (
                           <span className="dy-corr">
-                            {input(`vis_${eye}_corr`, { width: 100, placeholder: "+2,0" })} = {input(`vis_${eye}_result`, { width: 80 })}
+                            {input(`vis_${eye}_corr`, { width: 100, placeholder: "+2,0", pick: "corr" })} = {input(`vis_${eye}_result`, { width: 80, pick: "vis" })}
                           </span>
                         ) : (
                           <span className="muted" style={{ fontSize: 14 }}>только при «с коррекцией»</span>
                         )}
                       </td>
-                      <td>{input(`vgd_${eye}`, { width: 80, placeholder: hint(`vgd_${eye}`), inputMode: "numeric" })}</td>
+                      <td>{input(`vgd_${eye}`, { width: 80, placeholder: hint(`vgd_${eye}`), inputMode: "numeric", pick: "vgd" })}</td>
                     </tr>
                   );
                 })}

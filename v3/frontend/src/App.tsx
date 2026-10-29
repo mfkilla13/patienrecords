@@ -1,4 +1,7 @@
+import { useEffect } from "react";
 import { NavLink, Route, Routes } from "react-router-dom";
+import { api } from "./api";
+import { applyTheme } from "./theme";
 import { AdmissionPage } from "./pages/AdmissionPage";
 import { CasePage } from "./pages/CasePage";
 import { ExamPage } from "./pages/ExamPage";
@@ -21,7 +24,7 @@ import { longToday, todayIso } from "./format";
 function EyeMark() {
   return (
     <span className="brand-mark" aria-hidden="true">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
         <circle cx="12" cy="12" r="3" />
       </svg>
@@ -30,6 +33,8 @@ function EyeMark() {
 }
 
 export function App() {
+  // The saved theme (the database is the source; the browser only remembers it for the first frame).
+  useEffect(() => { api.settings().then((s) => applyTheme(s.theme), () => undefined); }, []);
   return (
     <>
       <header className="page topbar">

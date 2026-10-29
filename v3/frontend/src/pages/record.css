@@ -3,7 +3,7 @@
 .nr-tile b { font-size: 17px; }
 .nr-tile span { font-size: 13px; }
 .nr-tile.main { background: var(--accent-soft); }
-.nr-tile:hover { box-shadow: 0 2px 10px rgba(40, 30, 20, 0.14); }
+.nr-tile:hover { box-shadow: 0 2px 10px rgba(var(--shadow-rgb), 0.14); }
 .nr-tile[aria-disabled="true"] { opacity: 0.5; pointer-events: none; }
 .nr-text { min-height: 260px; font-size: 15px; line-height: 1.5; }
 

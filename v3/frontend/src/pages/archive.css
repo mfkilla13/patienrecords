@@ -14,7 +14,7 @@
 
 .ar-pages { display: flex; align-items: center; gap: 6px; padding: 14px 24px 18px; border-top: 1px solid var(--line); flex-wrap: wrap; font-size: 14px; }
 .ar-pg { width: 42px; height: 42px; border-radius: 50%; border: none; background: var(--chip); color: var(--text); font-size: 15px; cursor: pointer; }
-.ar-pg.on { background: var(--accent); color: #fff; font-weight: 600; }
+.ar-pg.on { background: var(--accent); color: var(--on-accent); font-weight: 600; }
 .ar-pg:disabled { background: var(--bg); color: var(--dash); cursor: default; }
 .ar-period { flex: 0 1 auto; }
 .ar-period-row { display: flex; align-items: center; gap: 8px; }

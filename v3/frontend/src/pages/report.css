@@ -15,7 +15,7 @@
 .rp-total td { font-weight: 700; border-bottom: none; }
 .rp-main td:last-child, .rp-main th:last-child { text-align: right; }
 .rp-check { background: var(--amber-bg); }
-.rp-check .rp-table td, .rp-check .rp-table th { border-color: rgba(92, 51, 0, 0.12); }
+.rp-check .rp-table td, .rp-check .rp-table th { border-color: var(--amber-line-soft); }
 .rp-auto select { min-width: 260px; }
 .rp-warn { font-size: 13px; margin: 4px 0 0; }
 @media (max-width: 1000px) { .rp-grid { grid-template-columns: 1fr; } }

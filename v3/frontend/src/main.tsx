@@ -7,6 +7,9 @@ import "@fontsource/onest/600.css";
 import "@fontsource/onest/700.css";
 import "./styles.css";
 import { App } from "./App";
+import { initTheme } from "./theme";
+
+initTheme();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

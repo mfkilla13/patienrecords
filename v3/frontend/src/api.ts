@@ -172,6 +172,7 @@ export interface Settings {
   default_printer: string;
   beds: string;
   bed_days_plan: string;
+  theme: string;
 }
 
 export interface Dictionaries {

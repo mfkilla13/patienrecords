@@ -26,7 +26,7 @@
 .sx-val { font-size: 12px; font-weight: 600; fill: var(--text); }
 .sx-bar { fill: var(--accent); }
 .sx-bar.on { fill: var(--accent-hover); }
-.sx-tip { position: absolute; transform: translate(-50%, -100%); background: var(--surface); border-radius: 12px; box-shadow: 0 2px 12px rgba(40, 30, 20, 0.18); padding: 8px 12px; font-size: 13px; display: flex; flex-direction: column; gap: 1px; pointer-events: none; white-space: nowrap; z-index: 2; }
+.sx-tip { position: absolute; transform: translate(-50%, -100%); background: var(--surface); border-radius: 12px; box-shadow: 0 2px 12px rgba(var(--shadow-rgb), 0.18); padding: 8px 12px; font-size: 13px; display: flex; flex-direction: column; gap: 1px; pointer-events: none; white-space: nowrap; z-index: 2; }
 
 .sx-ranked { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .sx-ranked li { display: grid; grid-template-columns: minmax(110px, 38%) 1fr auto; gap: 12px; align-items: center; font-size: 14px; }
@@ -41,7 +41,6 @@
   .sx-grid { grid-template-columns: 1fr; }
   .sx-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-:root { --hm-0: #f0ece6; --hm-1: #cfe3d6; --hm-2: #93c0a5; --hm-3: #579b76; --hm-4: #2e6b4f; }
 .sx-wide { grid-column: 1 / -1; display: flex; flex-direction: column; }
 .sx-area { fill: var(--accent); fill-opacity: 0.1; }
 .sx-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }

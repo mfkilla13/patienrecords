@@ -17,6 +17,7 @@ DEFAULTS = {
     "default_printer": "",
     "beds": "20",                 # for the department report: bed turnover, days of bed work
     "bed_days_plan": "",          # planned bed-days per year (% of the plan); empty — not shown
+    "theme": "auto",              # auto (as in Windows) | light | dark
 }
 
 
@@ -27,6 +28,7 @@ class SettingsIn(BaseModel):
     default_printer: str = Field("", max_length=200)
     beds: str = Field("20", max_length=4, pattern=r"^\d{0,4}$")
     bed_days_plan: str = Field("", max_length=6, pattern=r"^\d{0,6}$")
+    theme: str = Field("auto", pattern=r"^(auto|light|dark)$")
 
     @field_validator("*")
     @classmethod
