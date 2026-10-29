@@ -23,7 +23,7 @@ from . import db as store
 from . import exam as exam_mod
 from .importer import to_date
 
-OUTCOMES = ["улучшение", "без перемен", "ухудшение", "перевод", "смерть", "другое"]
+OUTCOMES = ["улучшение", "выздоровление", "без перемен", "ухудшение", "перевод", "самовольно покинул", "смерть", "другое"]
 
 VISION_KEYS = ("vis_od", "vis_os", "vis_correction_od", "vis_correction_os", "vis_od_corr", "vis_os_corr",
                "vis_od_result", "vis_os_result", "vgd_od", "vgd_os")
@@ -38,6 +38,7 @@ class DischargeIn(BaseModel):
     workplace: str = Field("", max_length=300)
     outcome: str = Field("", max_length=80)
     final_diagnosis: str = Field("", max_length=2000)
+    report_group: str = Field("", max_length=120)     # the row of the department report; kept on the case
     epicrisis: str = Field("", max_length=20000)
     recommendations: str = Field("", max_length=10000)
     vis_od: str = ""
@@ -105,6 +106,11 @@ def stay_days(admitted_at: str | None, discharge_date: str | None) -> int | None
     if not a or not d:
         return None
     return (date.fromisoformat(d) - date.fromisoformat(a)).days + 1
+
+
+def _report_groups() -> list[str]:
+    from .report import GROUPS      # report counts bed-days with stay_days from here
+    return GROUPS
 
 
 def _case(conn: sqlite3.Connection, case_id: str) -> sqlite3.Row:
@@ -281,6 +287,10 @@ def draft(conn: sqlite3.Connection, case_id: str) -> dict:
         if prev is not None:
             form["workplace"] = _s(_from_legacy(prev).get("workplace"))
 
+    from .report import GROUPS, suggest_group
+    form["report_group"] = (form.get("report_group") or c["report_group"]
+                            or suggest_group(form["final_diagnosis"] or c["dx_clinical"] or c["dx_admission"]))
+
     study_rows = [studies_mod.view(s) for s in conn.execute(
         "SELECT * FROM studies WHERE case_id = ? AND deleted_at IS NULL ORDER BY study_date", (case_id,))]
 
@@ -310,6 +320,7 @@ def draft(conn: sqlite3.Connection, case_id: str) -> dict:
         },
         "options": {
             "outcomes": OUTCOMES,
+            "reportGroups": GROUPS,
             "local": exam_mod.LOCAL_OPTIONS,
             "anterior": exam_mod.ANTERIOR_OPTIONS,
             "anteriorRow": exam_mod.ANTERIOR,
@@ -374,9 +385,9 @@ def save(conn: sqlite3.Connection, case_id: str, d: DischargeIn) -> str:
                          (data, f"{d.discharge_date}T{d.discharge_time or '00:00'}", ts, rid))
         conn.execute(
             "UPDATE cases SET status = 'discharged', discharged_at = ?, outcome = ?, dx_final = ?,"
-            " recommendations = ?, discharge_json = ?, updated_at = ? WHERE id = ?",
+            " recommendations = ?, discharge_json = ?, report_group = ?, updated_at = ? WHERE id = ?",
             (discharged_at, d.outcome.strip(), d.final_diagnosis.strip(), d.recommendations.strip(),
-             data, ts, case_id))
+             data, d.report_group.strip() if d.report_group.strip() in _report_groups() else "", ts, case_id))
     return rid
 
 

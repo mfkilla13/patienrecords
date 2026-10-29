@@ -336,6 +336,12 @@ export function DischargePage() {
           )}
         </span>
       )}
+      <label className="lbl ds-group">Группа для отчёта отделения
+        <select className="in" value={form.report_group} disabled={ro} onChange={(e) => set("report_group", e.target.value)}>
+          {opts.reportGroups.map((g) => <option key={g}>{g}</option>)}
+        </select>
+        <span className="muted" style={{ fontSize: 13 }}>Строка «Структуры пролеченных больных». Подобрана по диагнозу — проверьте, за чем лежал пациент.</span>
+      </label>
     </>,
     // 2 — Статус при выписке
     <>

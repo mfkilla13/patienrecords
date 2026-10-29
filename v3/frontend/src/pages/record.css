@@ -12,3 +12,6 @@
 .nr-tpl-use { flex: 1; min-width: 0; text-align: left; border: none; background: var(--bg); border-radius: 14px; padding: 10px 14px; display: flex; flex-direction: column; gap: 3px; cursor: pointer; font: inherit; color: var(--text); }
 .nr-tpl-use span { font-size: 13px; line-height: 1.4; }
 .nr-tpl-use:hover:not(:disabled) { background: var(--accent-soft); }
+.nr-report { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: flex-end; background: var(--bg); border-radius: 16px; padding: 12px 16px; }
+.nr-report .lbl { flex: 0 1 auto; }
+.nr-check { display: flex; align-items: center; gap: 8px; font-size: 14px; min-height: 40px; cursor: pointer; }

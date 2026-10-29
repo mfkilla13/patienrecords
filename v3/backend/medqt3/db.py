@@ -13,7 +13,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS patients (
     city        TEXT NOT NULL DEFAULT '',
     street      TEXT NOT NULL DEFAULT '',
     house       TEXT NOT NULL DEFAULT '',
+    residence   TEXT NOT NULL DEFAULT '',  -- '' | иногородний | иностранный гражданин (for the department report)
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL,
     deleted_at  TEXT,
@@ -53,6 +54,8 @@ CREATE TABLE IF NOT EXISTS cases (
     dx_comorbid     TEXT NOT NULL DEFAULT '',
     recommendations TEXT NOT NULL DEFAULT '',
     discharge_json  TEXT,
+    admission_channel TEXT NOT NULL DEFAULT '',  -- how the patient came (the department report)
+    report_group    TEXT NOT NULL DEFAULT '',    -- the row of «Структура пролеченных больных»
     created_at      TEXT NOT NULL,
     updated_at      TEXT NOT NULL,
     deleted_at      TEXT,
@@ -191,10 +194,23 @@ def connect(path: Path | None = None) -> sqlite3.Connection:
     return conn
 
 
+# Columns added after the first version: (table, column, definition). Applied to older databases
+# (and to backups restored from them); new databases get them from SCHEMA.
+ADDED_COLUMNS = [
+    ("patients", "residence", "TEXT NOT NULL DEFAULT ''"),
+    ("cases", "admission_channel", "TEXT NOT NULL DEFAULT ''"),
+    ("cases", "report_group", "TEXT NOT NULL DEFAULT ''"),
+]
+
+
 def init_schema(conn: sqlite3.Connection) -> None:
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     if version > SCHEMA_VERSION:
         raise RuntimeError(f"База создана более новой версией программы (схема {version}).")
     with conn:
+        for table, column, definition in ADDED_COLUMNS:
+            have = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+            if have and column not in have:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
         conn.executescript(SCHEMA)
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")

@@ -24,12 +24,16 @@ FILES = {
     "addresses": ("addresses.json", "Адреса"),
 }
 LISTS = ("ophthalmic", "comorbid", "examinations")
+ADDRESS_GROUPS = {"cities": "Населённые пункты", "streets": "Улицы", "villages": "Сёла — для отчёта"}
+# addresses.json has every settlement of Приднестровье (the state register, as listed on Wikipedia in 2026)
+# under "cities", and its villages under "villages": patients from those count as «сельские жители» in the
+# department report. Посёлки (Маяк, Первомайск, Красное...) are counted as towns; the doctor corrects the list.
 HINTS = {
     "ophthalmic": "Подсказки диагнозов OD/OS/OU при поступлении, в первичном осмотре и выписке.",
     "comorbid": "Подсказки сопутствующих диагнозов.",
     "examinations": "План обследования в первичном осмотре; по нему строится список «ещё не внесены» в исследованиях.",
     "treatment": "Препараты по группам для «Обоснования лечения» в первичном осмотре и дневниках.",
-    "addresses": "Подсказки при поступлении. Населённые пункты и улицы пациентов из базы подсказываются и без этого списка.",
+    "addresses": "Подсказки при поступлении (пункты и улицы из базы подсказываются и так). «Сёла» — кого считать сельскими жителями в отчёте отделения.",
 }
 MAX_ITEMS = 2000
 MAX_LEN = 300
@@ -76,7 +80,7 @@ def clean(name: str, value):
     if not isinstance(value, dict):
         raise DictError(422, "Ожидались группы")
     if name == "addresses":
-        return {"cities": _clean_list(value.get("cities", [])), "streets": _clean_list(value.get("streets", []))}
+        return {k: _clean_list(value.get(k, [])) for k in ADDRESS_GROUPS}
     groups = bundled("treatment")          # the groups are fixed: diaries and exams refer to them by key
     return {g: _clean_list(value.get(g, [])) for g in groups}
 
@@ -86,7 +90,10 @@ def get(conn: sqlite3.Connection, name: str):
         raise DictError(404, "Нет такого справочника")
     row = conn.execute("SELECT value FROM meta WHERE key = ?", (_key(name),)).fetchone()
     if row:
-        return json.loads(row["value"])
+        value = json.loads(row["value"])
+        if name == "addresses" and "villages" not in value:     # saved before the list existed
+            value["villages"] = clean(name, bundled(name))["villages"]
+        return value
     return clean(name, bundled(name))
 
 
@@ -94,7 +101,7 @@ def groups(name: str) -> dict[str, str] | None:
     if name == "treatment":
         return {g: TREATMENT_LABELS.get(g, g) for g in bundled("treatment")}
     if name == "addresses":
-        return {"cities": "Населённые пункты", "streets": "Улицы"}
+        return dict(ADDRESS_GROUPS)
     return None
 
 

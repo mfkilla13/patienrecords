@@ -121,6 +121,17 @@ export function SettingsPage() {
                 <span className="st-help">Будет выбран в окне печати. Если его не найдётся, программа возьмёт принтер Windows.</span>
               </label>
               <span />
+
+              <label className="lbl">Коек в отделении
+                <input className="in" inputMode="numeric" maxLength={4} value={form.beds} style={{ maxWidth: 140 }}
+                  onChange={(e) => set("beds", e.target.value.replace(/\D/g, ""))} />
+                <span className="st-help">Для отчёта отделения: оборот койки, число дней работы койки.</span>
+              </label>
+              <label className="lbl">План койко-дней на год
+                <input className="in" inputMode="numeric" maxLength={6} value={form.bed_days_plan} style={{ maxWidth: 160 }}
+                  placeholder="не задан" onChange={(e) => set("bed_days_plan", e.target.value.replace(/\D/g, ""))} />
+                <span className="st-help">Для «процента выполнения плана койко-дней». Пусто — строка не считается.</span>
+              </label>
             </div>
 
             <div className="st-foot">

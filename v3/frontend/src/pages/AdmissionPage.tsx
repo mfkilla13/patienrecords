@@ -27,7 +27,7 @@ export function AdmissionPage() {
   const [dict, setDict] = useState<Dictionaries | null>(null);
   const [form, setForm] = useState<AdmissionIn>({
     patientId: null, surname: "", name: "", patronymic: "", dob: null, city: "", street: "", house: "", medCard: "",
-    admittedDate: todayIso(), admittedTime: nowHm(), dxAdmission: "", dxClinical: "", dxComorbid: "",
+    admittedDate: todayIso(), admittedTime: nowHm(), dxAdmission: "", dxClinical: "", dxComorbid: "", channel: "", residence: "",
   });
   const [eye, setEye] = useState<Eye>("");
   const [matches, setMatches] = useState<PatientMatch[]>([]);
@@ -57,7 +57,7 @@ export function AdmissionPage() {
     setChosen(m);
     setMatches([]);
     setForm((f) => ({ ...f, patientId: m.id, surname: m.surname, name: m.name, patronymic: m.patronymic, dob: m.dob,
-      city: m.city, street: m.street, house: m.house }));
+      city: m.city, street: m.street, house: m.house, residence: m.residence }));
   };
   const unchoose = () => {
     setChosen(null);
@@ -150,6 +150,11 @@ export function AdmissionPage() {
                 <input className="in" list="ad-streets" value={form.street} onChange={(e) => set("street", e.target.value)} />
               </label>
               <label className="lbl">Дом, кв. <input className="in" value={form.house} onChange={(e) => set("house", e.target.value)} /></label>
+              <label className="lbl">Для отчёта
+                <select className="in" value={form.residence} onChange={(e) => set("residence", e.target.value)}>
+                  {(dict?.residence ?? [""]).map((r) => <option key={r} value={r}>{r || "местный житель"}</option>)}
+                </select>
+              </label>
             </div>
           </div>
 
@@ -176,6 +181,13 @@ export function AdmissionPage() {
                 </span>
               </label>
             </div>
+            <label className="lbl">Как поступил
+              <select className="in white" value={form.channel} onChange={(e) => set("channel", e.target.value)}>
+                <option value="">не указано</option>
+                {dict?.channels.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <span className="ad-note">Для отчёта отделения: экстренно или планово, кем направлен.</span>
+            </label>
             <div className="lbl">Диагноз при поступлении *
               <span className="ad-row">
                 <span className="seg ad-eye" role="radiogroup" aria-label="Глаз">

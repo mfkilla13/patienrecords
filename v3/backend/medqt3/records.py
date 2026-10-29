@@ -43,6 +43,10 @@ class RecordIn(BaseModel):
     time: str = ""
     title: str = Field("", max_length=300)        # operation name / the record's own title
     text: str = Field("", max_length=20000)
+    # The protocol only, for the department report: the kind of operation, urgent or planned, a complication.
+    op_type: str = Field("", max_length=80)
+    urgency: str = Field("", max_length=10)
+    complication: bool = False
 
     @field_validator("title", "time")
     @classmethod
@@ -76,7 +80,13 @@ def _data(kind: str, r: RecordIn, d: str, t: str) -> dict:
     if kind == "operation_protocol":
         if not r.title and not r.text:
             raise RecordError(422, "Заполните название или описание операции")
-        return {"date": d, "time": t, "operation_name": r.title, "description": r.text}
+        from .report import OP_TYPES, URGENCY, suggest_op_type
+        if r.op_type and r.op_type not in OP_TYPES:
+            raise RecordError(422, "Нет такого вида операции")
+        if r.urgency and r.urgency not in URGENCY:
+            raise RecordError(422, "Срочность — «срочно» или «планово»")
+        return {"date": d, "time": t, "operation_name": r.title, "description": r.text,
+                "op_type": r.op_type or suggest_op_type(r.title), "urgency": r.urgency, "complication": r.complication}
     if not r.title:
         raise RecordError(422, "Укажите, что это за запись")
     if not r.text:
@@ -127,6 +137,8 @@ def get(conn: sqlite3.Connection, record_id: str) -> dict:
     text = data.get("description", "") if row["kind"] == "operation_protocol" else data.get("text", "")
     return {"id": row["id"], "caseId": row["case_id"], "kind": row["kind"], "printedAt": row["printed_at"],
             "date": row["recorded_at"][:10], "time": row["recorded_at"][11:16], "title": title, "text": text,
+            "op_type": data.get("op_type", ""), "urgency": data.get("urgency", ""),
+            "complication": bool(data.get("complication")),
             "editable": bool(row["data_json"]) and not row["printed_at"]}
 
 
@@ -181,4 +193,6 @@ def delete_template(conn: sqlite3.Connection, name: str) -> list[dict]:
 
 
 def options(conn: sqlite3.Connection) -> dict:
-    return {"textTitles": TEXT_TITLES, "templates": templates(conn), "now": datetime.now().strftime("%H:%M")}
+    from .report import OP_TYPES, URGENCY
+    return {"textTitles": TEXT_TITLES, "templates": templates(conn), "now": datetime.now().strftime("%H:%M"),
+            "opTypes": OP_TYPES, "urgency": list(URGENCY)}

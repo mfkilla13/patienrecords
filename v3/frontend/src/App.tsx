@@ -12,6 +12,7 @@ import { PrintPage } from "./pages/PrintPage";
 import { RoundPage } from "./pages/RoundPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { StatsPage } from "./pages/StatsPage";
+import { ReportPage } from "./pages/ReportPage";
 import { NewRecordPage, RecordPage } from "./pages/RecordPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { longToday, todayIso } from "./format";
@@ -39,6 +40,7 @@ export function App() {
           <NavLink to="/" end>Отделение</NavLink>
           <NavLink to="/archive">Архив</NavLink>
           <NavLink to="/stats">Статистика</NavLink>
+          <NavLink to="/report">Отчёт</NavLink>
           <NavLink to="/dictionaries">Справочники</NavLink>
         </nav>
         <span className="today">{longToday(todayIso())}</span>
@@ -60,6 +62,7 @@ export function App() {
         <Route path="/round" element={<RoundPage />} />
         <Route path="/archive" element={<ArchivePage />} />
         <Route path="/stats" element={<StatsPage />} />
+        <Route path="/report" element={<ReportPage />} />
         <Route path="/dictionaries" element={<SettingsPage />} />
         <Route path="*" element={<PlaceholderPage title="Страница не найдена" />} />
       </Routes>

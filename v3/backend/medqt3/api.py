@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from urllib.parse import quote
 from datetime import date
 from pathlib import Path
 
@@ -15,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import (__version__, admission, archive, backups, clinical, diaries, dicts, discharge, dischargeprint, exams,
-               prescriptions, paths, printjobs, records, rxprint, settings, stats, studies)
+               prescriptions, paths, printjobs, records, report, reportdoc, rxprint, settings, stats, studies)
 from . import db as store
 
 class PrintJobIn(BaseModel):
@@ -37,6 +38,10 @@ class ExtraDirIn(BaseModel):
 
 class DictIn(BaseModel):
     value: list | dict
+
+
+class GroupIn(BaseModel):
+    group: str
 
 
 class DischargePrintIn(BaseModel):
@@ -511,6 +516,37 @@ def create_app(db_path: Path | None = None, auto_backup: bool = False) -> FastAP
             return stats.compute(conn, date_from or None, date_to or None)
         except stats.StatsError as e:
             raise HTTPException(e.status, e.message)
+
+    def _report(date_from: str, date_to: str) -> dict:
+        try:
+            return report.compute(conn, date_from, date_to)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+
+    @app.get("/api/report")
+    def get_report(date_from: str = "", date_to: str = ""):
+        if not date_from and not date_to:
+            first = report.periods()[0]
+            date_from, date_to = first["from"], first["to"]
+        data = _report(date_from, date_to)
+        return {**data, "periods": report.periods(), "title": reportdoc.period_title(date_from, date_to)}
+
+    @app.get("/api/report.docx")
+    def get_report_docx(date_from: str, date_to: str):
+        content = reportdoc.document(_report(date_from, date_to), settings.get(conn)["department"])
+        name = reportdoc.file_name(date_from, date_to)
+        return Response(content, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        headers={"Content-Disposition": f"attachment; filename=\"report.docx\"; filename*=UTF-8''{quote(name)}"})
+
+    @app.put("/api/cases/{case_id}/report-group")
+    def put_report_group(case_id: str, body: GroupIn):
+        try:
+            report.set_group(conn, case_id, body.group)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+        except LookupError as e:
+            raise HTTPException(404, str(e))
+        return {"ok": True}
 
     @app.get("/api/archive")
     def get_archive(q: str = "", period: str = "all", dx: str = "", outcome: str = "", page: int = 1):

@@ -63,7 +63,7 @@ export function NewRecordPage() {
   );
 }
 
-const EMPTY: SimpleRecordIn = { date: todayIso(), time: "", title: "", text: "" };
+const EMPTY: SimpleRecordIn = { date: todayIso(), time: "", title: "", text: "", op_type: "", urgency: "", complication: false };
 
 /** The operation protocol or a plain text record: new (/record/new/:kind) or changed (/record/:recordId). */
 export function RecordPage() {
@@ -90,7 +90,7 @@ export function RecordPage() {
     if (recordId) {
       api.record(recordId).then((r) => {
         setKind(r.kind);
-        setForm({ date: r.date, time: r.time, title: r.title, text: r.text });
+        setForm({ date: r.date, time: r.time, title: r.title, text: r.text, op_type: r.op_type, urgency: r.urgency, complication: r.complication });
         if (!r.editable) setLocked(r.printedAt ? `Запись напечатана ${fullDate(r.printedAt)} — её нельзя менять.` : "Запись из 2.9 без полей — её нельзя менять.");
       }, (e: Error) => setError(e.message));
     }
@@ -100,7 +100,7 @@ export function RecordPage() {
     if (card && card.status === "archived") setLocked("История в архиве — сначала верните её из архива.");
   }, [card]);
 
-  const set = (k: keyof SimpleRecordIn, v: string) => {
+  const set = <K extends keyof SimpleRecordIn>(k: K, v: SimpleRecordIn[K]) => {
     setForm((f) => ({ ...f, [k]: v }));
     setError(null);
     setNote(null);
@@ -196,6 +196,29 @@ export function RecordPage() {
                 placeholder="например: Консилиум" onChange={(e) => set("title", e.target.value)} />
               <datalist id="nr-titles">{opts?.textTitles.map((t) => <option key={t} value={t} />)}</datalist>
             </label>
+          )}
+
+          {isProtocol && (
+            <div className="nr-report">
+              <label className="lbl">Вид операции — для отчёта
+                <select className="in" value={form.op_type} disabled={readOnly} onChange={(e) => set("op_type", e.target.value)}>
+                  <option value="">подобрать по названию</option>
+                  {opts?.opTypes.map((t) => <option key={t}>{t}</option>)}
+                </select>
+              </label>
+              <div className="lbl">Порядок
+                <span className="ex-chips">
+                  {(opts?.urgency ?? []).map((u) => (
+                    <button key={u} type="button" className={"chip" + (form.urgency === u ? " on" : "")} aria-pressed={form.urgency === u}
+                      disabled={readOnly} onClick={() => set("urgency", form.urgency === u ? "" : u)}>{u}</button>
+                  ))}
+                </span>
+              </div>
+              <label className="nr-check">
+                <input type="checkbox" checked={form.complication} disabled={readOnly} onChange={(e) => set("complication", e.target.checked)} />
+                Послеоперационное осложнение
+              </label>
+            </div>
           )}
 
           <label className="lbl">{isProtocol ? "Ход операции" : "Текст"}

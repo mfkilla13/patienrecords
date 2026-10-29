@@ -88,3 +88,15 @@ def test_dictionary_edit_and_reset(setup):
     assert rx["groups"]["drugs"] == "Препараты" and not rx["canReset"]
     rx = client.put("/api/dictionaries/prescriptions", json={"value": {**rx["value"], "lfk": ["ЛФК", "Массаж воротниковой зоны"]}}).json()
     assert rx["value"]["lfk"] == ["ЛФК", "Массаж воротниковой зоны"]
+
+
+def test_all_settlements_of_pmr_with_villages_marked(setup):
+    client, conn, path = setup
+    a = client.get("/api/dictionaries/addresses").json()
+    cities, villages = a["value"]["cities"], a["value"]["villages"]
+    assert len(cities) > 170 and len(villages) > 150
+    for town in ("Тирасполь", "Бендеры", "Рыбница", "Дубоссары", "Григориополь", "Каменка", "Слободзея", "Днестровск"):
+        assert town in cities and town not in villages
+    for village in ("Гиска", "Парканы", "Варница", "Протягайловка", "Чобручи", "Кицканы", "Рашков"):
+        assert village in villages, village
+    assert "Сёла" in a["groups"]["villages"]

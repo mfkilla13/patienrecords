@@ -69,3 +69,4 @@
 .dp-dialog { padding: 22px 26px 26px; gap: 16px; max-width: 980px; }
 .dp-head { display: flex; align-items: center; gap: 12px; justify-content: space-between; }
 .dp-head h2 { margin: 0; font-size: 22px; }
+.ds-group { max-width: 520px; }

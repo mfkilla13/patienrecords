@@ -15,6 +15,8 @@ DEFAULTS = {
     "org_header": "Министерство здравоохранения\nПриднестровской Молдавской Республики\nГУ БГЦБ",
     "department": "Офтальмологическое отделение",
     "default_printer": "",
+    "beds": "20",                 # for the department report: bed turnover, days of bed work
+    "bed_days_plan": "",          # planned bed-days per year (% of the plan); empty — not shown
 }
 
 
@@ -23,6 +25,8 @@ class SettingsIn(BaseModel):
     org_header: str = Field("", max_length=400)
     department: str = Field("", max_length=120)
     default_printer: str = Field("", max_length=200)
+    beds: str = Field("20", max_length=4, pattern=r"^\d{0,4}$")
+    bed_days_plan: str = Field("", max_length=6, pattern=r"^\d{0,6}$")
 
     @field_validator("*")
     @classmethod

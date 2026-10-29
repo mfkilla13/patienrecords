@@ -169,6 +169,8 @@ export interface Settings {
   org_header: string;
   department: string;
   default_printer: string;
+  beds: string;
+  bed_days_plan: string;
 }
 
 export interface Dictionaries {
@@ -179,6 +181,8 @@ export interface Dictionaries {
   cities: string[];
   streets: string[];
   nextNumber: string;
+  channels: string[];
+  residence: string[];
 }
 
 export interface PatientMatch {
@@ -190,6 +194,7 @@ export interface PatientMatch {
   city: string;
   street: string;
   house: string;
+  residence: string;
   lastCase: { number: string; admittedAt: string | null; status: string; diagnosis: string } | null;
 }
 
@@ -208,6 +213,8 @@ export interface AdmissionIn {
   dxAdmission: string;
   dxClinical: string;
   dxComorbid: string;
+  channel: string;
+  residence: string;
 }
 
 /** Primary exam in the 2.9 format (primary_exam_v1); loosely typed on purpose — it is a large form. */
@@ -253,6 +260,7 @@ export interface DischargeForm {
   workplace: string;
   outcome: string;
   final_diagnosis: string;
+  report_group: string;
   epicrisis: string;
   recommendations: string;
   vis_od: string; vis_os: string;
@@ -290,6 +298,7 @@ export interface DischargeDraft {
   };
   options: {
     outcomes: string[];
+    reportGroups: string[];
     local: Record<string, string[] | null>;
     anterior: { depth: string[]; fluid: string[] };
     anteriorRow: string;
@@ -365,12 +374,15 @@ export interface BackupList {
 }
 
 export type SimpleKind = "operation_protocol" | "other";
-export interface SimpleRecordIn { date: string; time: string; title: string; text: string }
+export interface SimpleRecordIn {
+  date: string; time: string; title: string; text: string;
+  op_type: string; urgency: string; complication: boolean;    // the protocol only
+}
 export interface SimpleRecord extends SimpleRecordIn {
   id: string; caseId: string; kind: SimpleKind; printedAt: string | null; editable: boolean;
 }
 export interface OperationTemplate { name: string; description: string }
-export interface RecordOptions { textTitles: string[]; templates: OperationTemplate[]; now: string }
+export interface RecordOptions { textTitles: string[]; templates: OperationTemplate[]; now: string; opTypes: string[]; urgency: string[] }
 
 export interface StatsPoint { key: string; label: string; value: number | null; n?: number }
 export interface Stats {
@@ -378,6 +390,27 @@ export interface Stats {
   totals: { admitted: number; discharged: number; avgStay: number | null; inDepartment: number };
   admissions: StatsPoint[]; discharges: StatsPoint[]; avgStay: StatsPoint[];
   diagnoses: { label: string; value: number }[]; outcomes: { label: string; value: number }[];
+}
+
+export interface ReportRow { label: string; count: number; share: number | null; bedDays: number; avgStay: number | null }
+export interface ReportMain {
+  beds: number; treated: number; admitted: number; discharged: number; died: number; bedDays: number;
+  avgStay: number | null; bedWork: number | null; turnover: number | null; bedIdle: number | null; planPercent: number | null;
+  rural: number; ruralPercent: number | null; nonresident: number; foreign: number; children: number; teens: number;
+  emergency: number; planned: number; channelUnknown: number;
+}
+export interface ReportPeriod {
+  from: string; to: string; hasData: boolean; main: ReportMain;
+  channels: { label: string; kind: "emergency" | "planned"; count: number }[];
+  outcomes: { label: string; count: number }[];
+  structure: ReportRow[]; operations: ReportRow[];
+  surgery: { operations: number; urgent: number; planned: number; urgencyUnknown: number; operatedUrgent: number;
+    operatedPlanned: number; complicationsUrgent: number; complicationsPlanned: number };
+  autoGroups?: { caseId: string; number: string; patient: string; dx: string; group: string }[];
+}
+export interface DeptReport {
+  current: ReportPeriod; previous: ReportPeriod; groups: string[]; title: string; villages: string[];
+  periods: { key: string; label: string; from: string; to: string }[];
 }
 
 export type DictName = "ophthalmic" | "comorbid" | "examinations" | "treatment" | "prescriptions" | "addresses";
@@ -512,6 +545,11 @@ export const api = {
   prescriptionPdfUrl: (caseId: string) => `/api/cases/${encodeURIComponent(caseId)}/prescriptions/pdf`,
   printPrescriptions: (caseId: string, printer: string, copies: number) =>
     request<{ ok: true }>("POST", `/api/cases/${encodeURIComponent(caseId)}/prescriptions/print`, { printer, copies }),
+  report: (from: string, to: string) =>
+    get<DeptReport>(`/api/report?${new URLSearchParams({ date_from: from, date_to: to }).toString()}`),
+  reportDocxUrl: (from: string, to: string) => `/api/report.docx?${new URLSearchParams({ date_from: from, date_to: to }).toString()}`,
+  setReportGroup: (caseId: string, group: string) =>
+    request<{ ok: true }>("PUT", `/api/cases/${encodeURIComponent(caseId)}/report-group`, { group }),
   stats: (from: string, to: string) =>
     get<Stats>(`/api/stats?${new URLSearchParams({ date_from: from, date_to: to }).toString()}`),
   settings: () => get<Settings>("/api/settings"),

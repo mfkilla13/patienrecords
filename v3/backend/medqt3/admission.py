@@ -37,6 +37,8 @@ class AdmissionIn(BaseModel):
     dxAdmission: str = Field(..., max_length=500)
     dxClinical: str = Field("", max_length=500)
     dxComorbid: str = Field("", max_length=500)
+    channel: str = Field("", max_length=80)           # how the patient came — for the department report
+    residence: str = Field("", max_length=40)         # '' | иногородний | иностранный гражданин
 
     @field_validator("surname", "name", "patronymic", "city", "street", "house", "dxAdmission", "dxClinical",
                      "dxComorbid", "medCard", "admittedTime")
@@ -89,7 +91,7 @@ def search(conn: sqlite3.Connection, query: str, limit: int = 8) -> list[dict]:
             " WHERE patient_id = ? AND deleted_at IS NULL ORDER BY admitted_at DESC LIMIT 1", (p["id"],)).fetchone()
         out.append({
             "id": p["id"], "surname": p["surname"], "name": p["name"], "patronymic": p["patronymic"], "dob": p["dob"],
-            "city": p["city"], "street": p["street"], "house": p["house"],
+            "city": p["city"], "street": p["street"], "house": p["house"], "residence": p["residence"],
             "lastCase": {"number": last["number"], "admittedAt": last["admitted_at"], "status": last["status"],
                          "diagnosis": last["dx_final"] or last["dx_clinical"] or last["dx_admission"]} if last else None,
         })
@@ -99,6 +101,11 @@ def search(conn: sqlite3.Connection, query: str, limit: int = 8) -> list[dict]:
 def admit(conn: sqlite3.Connection, a: AdmissionIn) -> dict:
     if not a.dxAdmission:
         raise AdmissionError(422, "Укажите диагноз при поступлении")
+    from .report import CHANNELS, RESIDENCE
+    if a.channel and a.channel not in CHANNELS:
+        raise AdmissionError(422, "Нет такого способа госпитализации")
+    if a.residence not in RESIDENCE:
+        raise AdmissionError(422, "Нет такого варианта места жительства")
     ts = store.now_iso()
     with conn:
         if a.patientId:
@@ -111,27 +118,28 @@ def admit(conn: sqlite3.Connection, a: AdmissionIn) -> dict:
                 raise AdmissionError(409, f"Пациент уже в отделении — история № {active['number']}")
             pid = a.patientId
             # The address may have changed since the last stay (2.9's wizard updated it too).
-            conn.execute("UPDATE patients SET city = ?, street = ?, house = ?, updated_at = ? WHERE id = ?",
-                         (a.city, a.street, a.house, ts, pid))
+            conn.execute("UPDATE patients SET city = ?, street = ?, house = ?, residence = ?, updated_at = ? WHERE id = ?",
+                         (a.city, a.street, a.house, a.residence, ts, pid))
         else:
             if not a.surname:
                 raise AdmissionError(422, "Фамилия обязательна")
             pid = store.new_id()
             conn.execute(
-                "INSERT INTO patients (id, surname, name, patronymic, dob, city, street, house, created_at, updated_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?)",
-                (pid, a.surname, a.name, a.patronymic, a.dob, a.city, a.street, a.house, ts, ts))
+                "INSERT INTO patients (id, surname, name, patronymic, dob, city, street, house, residence,"
+                " created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (pid, a.surname, a.name, a.patronymic, a.dob, a.city, a.street, a.house, a.residence, ts, ts))
         cid, number = store.new_id(), next_number(conn)
         admitted = f"{a.admittedDate}T{a.admittedTime}" if a.admittedTime else a.admittedDate
         conn.execute(
             "INSERT INTO cases (id, patient_id, number, med_card, admitted_at, status, dx_admission, dx_clinical,"
-            " dx_comorbid, created_at, updated_at) VALUES (?,?,?,?,?,'active',?,?,?,?,?)",
-            (cid, pid, number, a.medCard, admitted, a.dxAdmission, a.dxClinical, a.dxComorbid, ts, ts))
+            " dx_comorbid, admission_channel, created_at, updated_at) VALUES (?,?,?,?,?,'active',?,?,?,?,?,?)",
+            (cid, pid, number, a.medCard, admitted, a.dxAdmission, a.dxClinical, a.dxComorbid, a.channel, ts, ts))
     return {"caseId": cid, "number": number, "patientId": pid}
 
 
 def dictionaries(conn: sqlite3.Connection) -> dict:
     """Lists for suggestions. Towns and streets also grow from addresses already in the database."""
+    from .report import CHANNELS, RESIDENCE
     addresses = dicts.get(conn, "addresses")
     cities = set(addresses["cities"])
     streets = set(addresses["streets"])
@@ -148,4 +156,6 @@ def dictionaries(conn: sqlite3.Connection) -> dict:
         "cities": sorted(cities, key=str.casefold),
         "streets": sorted(streets, key=str.casefold),
         "nextNumber": next_number(conn),
+        "channels": list(CHANNELS),
+        "residence": RESIDENCE,
     }
