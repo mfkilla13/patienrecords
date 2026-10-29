@@ -358,6 +358,14 @@ def create_app(db_path: Path | None = None, auto_backup: bool = False, updates: 
         printjobs.forget_cache()      # sheet headings carry the name and the dates
         return result
 
+    @app.delete("/api/cases/{case_id}")
+    def delete_case(case_id: str):
+        _call(admission.AdmissionError, admission.edit_form, case_id)       # 404 before any copy is made
+        saved = _bk(backups.make, conn, db_path, "before_delete")
+        result = _call(admission.AdmissionError, admission.delete_case, case_id)
+        printjobs.forget_cache()
+        return {**result, "savedAs": saved["name"]}
+
     @app.post("/api/admissions", status_code=201)
     def post_admission(body: admission.AdmissionIn):
         return _call(admission.AdmissionError, admission.admit, body)

@@ -5,7 +5,10 @@ import { dobProblem, plural, todayIso } from "../format";
 import "./diary.css";
 import "./record.css";
 
-interface EditData { caseId: string; number: string; status: string; dischargedAt: string | null; otherCases: number; form: AdmissionIn }
+interface EditData {
+  caseId: string; number: string; status: string; dischargedAt: string | null; otherCases: number;
+  records: number; printed: number; form: AdmissionIn;
+}
 
 /** Fixing what was typed at admission: the patient's name, birth date, address and the stay's own data. */
 export function CaseEditPage() {
@@ -37,6 +40,28 @@ export function CaseEditPage() {
     try {
       await api.saveCaseEdit(caseId, form);
       navigate(`/case/${caseId}`);
+    } catch (e) {
+      setError((e as Error).message);
+      setSaving(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!data || !form) return;
+    const who = [form.surname, form.name, form.patronymic].filter(Boolean).join(" ");
+    if (!window.confirm(`Удалить историю № ${data.number} (${who})?
+
+Это для истории, созданной по ошибке. `
+      + (data.records ? `В ней ${data.records} ${plural(data.records, "запись", "записи", "записей")}`
+        + (data.printed ? `, из них напечатано ${data.printed}.` : ".") : "Записей в ней нет.")
+      + (data.otherCases ? "" : " Пациент тоже исчезнет из поиска — других историй у него нет."))) return;
+    if (!window.confirm(`Точно удалить историю № ${data.number}? Перед удалением программа сохранит копию базы — `
+      + "вернуть историю можно будет через «Резервные копии».")) return;
+    setSaving(true);
+    try {
+      const r = await api.deleteCase(caseId);
+      window.alert(`История № ${r.number} удалена. Копия базы до удаления: ${r.savedAs}.`);
+      navigate("/");
     } catch (e) {
       setError((e as Error).message);
       setSaving(false);
@@ -114,6 +139,13 @@ export function CaseEditPage() {
             <span className="st-help">
               Заключительный диагноз, исход и дата выписки меняются в выписке. Новые данные появятся в шапке следующих напечатанных листов.
             </span>
+          </section>
+          <section className="card dy-card ce-danger" aria-label="Удаление истории">
+            <div>
+              <b>Удалить историю</b>
+              <span className="st-help">Если история создана по ошибке. Перед удалением сохраняется копия базы; номер {data?.number} освободится, если он последний.</span>
+            </div>
+            <button type="button" className="btn ce-delete" onClick={remove} disabled={saving}>Удалить историю…</button>
           </section>
         </div>
       )}

@@ -173,8 +173,18 @@ class SignLine(Flowable):
             x -= w + 14
 
 
+def eye_vision(e: dict) -> str:
+    """One eye as written by hand: «0,8 с коррекцией −1,5 D = 1,0», «0,1 n.k.», «счет пальцев у лица»."""
+    parts = [x for x in (e["vis"], e["status"]) if x]
+    if e["corr"] or e["result"]:
+        parts.append("с коррекцией" + (f" {e['corr']}" if e["corr"] else "") + (f" = {e['result']}" if e["result"] else ""))
+    return " ".join(parts) or "—"
+
+
 class VisionLine(Flowable):
-    """Vis OD/OS = a/b  status  corr = result     ВГД OD/OS = c/d мм рт. ст. — drawn as fractions."""
+    """Vis OD/OS = a/b     ВГД OD/OS = c/d мм рт. ст. — drawn as fractions. With a correction or a status on
+    either eye Vis is written per eye in two lines («OD = 0,8 с коррекцией −1,5 D = 1,0» / «OS = 0,9»): a fraction
+    with blank halves reads as nonsense. Same height either way, so printed positions do not move."""
 
     PAD = 2.5
     SIZE = 9.5
@@ -188,14 +198,11 @@ class VisionLine(Flowable):
         od, os_ = e["od"], e["os"]
         groups = []
         if od["vis"] or os_["vis"]:
-            g = [("text", "Vis", True), ("frac", "OD", "OS", False), ("text", "=", False),
-                 ("frac", od["vis"] or "—", os_["vis"] or "—", True)]
-            if od["status"] or os_["status"]:
-                g.append(("frac", od["status"], os_["status"], False))
-            if od["corr"] or os_["corr"] or od["result"] or os_["result"]:
-                g += [("frac", od["corr"], os_["corr"], False), ("text", "=", False),
-                      ("frac", od["result"], os_["result"], True)]
-            groups.append(g)
+            if any(x[k] for x in (od, os_) for k in ("status", "corr", "result")):
+                groups.append([("text", "Vis", True), ("rows", f"OD = {eye_vision(od)}", f"OS = {eye_vision(os_)}", False)])
+            else:
+                groups.append([("text", "Vis", True), ("frac", "OD", "OS", False), ("text", "=", False),
+                               ("frac", od["vis"] or "—", os_["vis"] or "—", True)])
         if od["iop"] or os_["iop"]:
             groups.append([("text", "ВГД", True), ("frac", "OD", "OS", False), ("text", "=", False),
                            ("frac", od["iop"] or "—", os_["iop"] or "—", True), ("small", "мм рт. ст.", False)])
@@ -228,6 +235,10 @@ class VisionLine(Flowable):
                     size = 8 if item[0] == "small" else self.SIZE
                     c.setFont(FONT_BOLD if item[2] else FONT, size)
                     c.drawString(x, mid - size * 0.35, item[1])
+                elif item[0] == "rows":
+                    c.setFont(FONT, self.SIZE)
+                    c.drawString(x + self.PAD, mid + 2.6, item[1])
+                    c.drawString(x + self.PAD, mid - self.SIZE - 0.6, item[2])
                 else:
                     c.setFont(FONT_BOLD if item[3] else FONT, self.SIZE)
                     c.drawCentredString(x + w / 2, mid + 2.6, item[1])

@@ -5,7 +5,16 @@ import { MultiChips } from "../components/MultiChips";
 import { VisionFractions } from "../components/VisionFractions";
 import { toVision, VIS_STATUSES, WITH_CORRECTION } from "../diary";
 import { fullDate, plural, shortDate } from "../format";
-import { PickInput } from "../components/PickInput";
+import { PickInput, PickKind } from "../components/PickInput";
+
+/** КБ and F of Nesterov tonography from Ро and С, as text; empty when either is missing. */
+function tonoCalc(f: Record<string, unknown>, eye: string): { kb: string; f: string } {
+  const num = (x: unknown) => Number(String(x ?? "").replace(",", ".").trim() || NaN);
+  const ro = num(f[`tono_${eye}_ro`]), c = num(f[`tono_${eye}_c`]);
+  if (!(ro > 0) || !(c > 0)) return { kb: "", f: "" };
+  const fmt = (x: number) => (Math.round(x * 10) / 10).toFixed(1).replace(".", ",");
+  return { kb: fmt(ro / c), f: fmt(Math.max(0, c * (ro - 10))) };
+}
 import "./exam.css";
 import "./diary.css";
 import "./discharge.css";
@@ -79,6 +88,22 @@ export function DischargePage() {
   const set = <K extends keyof DischargeForm>(k: K, v: DischargeForm[K]) => {
     if (archived) return;
     setForm((f) => (f ? { ...f, [k]: v } : f));
+    setDirty(true);
+  };
+  /** Tonography: КБ = Ро / С and F = С × (Ро − 10) follow Ро and С, unless the doctor typed her own. */
+  const setTono = (eye: Eye, k: "ro" | "c", v: string) => {
+    if (archived) return;
+    setForm((f) => {
+      if (!f) return f;
+      const next = { ...f, [`tono_${eye}_${k}`]: v };
+      const was = tonoCalc(f as unknown as Record<string, unknown>, eye), now = tonoCalc(next as unknown as Record<string, unknown>, eye);
+      for (const key of ["kb", "f"] as const) {
+        const field = `tono_${eye}_${key}` as keyof DischargeForm;
+        const cur = String(f[field] ?? "");
+        if (!cur || cur === was[key]) (next as Record<string, unknown>)[field] = now[key];
+      }
+      return next;
+    });
     setDirty(true);
   };
   const editLocal = (fn: (local: DischargeForm["discharge_local"]) => void) => {
@@ -270,9 +295,14 @@ export function DischargePage() {
     </table>
   );
 
-  const small = (k: keyof DischargeForm, label?: string, width = 76) => (
+  const small = (k: keyof DischargeForm, label?: string, width = 76, kind?: PickKind, onChange?: (v: string) => void) => (
     <label className="ex-inline">{label}
-      <input className="in" style={{ width }} value={form[k] as string} disabled={ro} onChange={(e) => set(k, e.target.value as never)} />
+      {kind ? (
+        <PickInput kind={kind} className="in" style={{ width }} value={form[k] as string} disabled={ro}
+          onChange={onChange ?? ((v) => set(k, v as never))} />
+      ) : (
+        <input className="in" style={{ width }} value={form[k] as string} disabled={ro} onChange={(e) => set(k, e.target.value as never)} />
+      )}
     </label>
   );
 
@@ -355,23 +385,24 @@ export function DischargePage() {
         <div className="ds-extra-row">
           <b>ВГД max / min</b>
           {(["od", "os"] as Eye[]).map((e) => (
-            <span key={e} className="ds-pair">{e.toUpperCase()} {small(`vgd_${e}_max`, "max", 64)} {small(`vgd_${e}_min`, "min", 64)}</span>
+            <span key={e} className="ds-pair">{e.toUpperCase()} {small(`vgd_${e}_max`, "max", 64, "vgd")} {small(`vgd_${e}_min`, "min", 64, "vgd")}</span>
           ))}
           <span className="muted">мм рт. ст.</span>
         </div>
         <div className="ds-extra-row">
           <b>Эластотонометрия</b>
-          {(["od", "os"] as Eye[]).map((e) => <span key={e} className="ds-pair">{small(`elasto_${e}`, e.toUpperCase(), 110)}</span>)}
+          {(["od", "os"] as Eye[]).map((e) => <span key={e} className="ds-pair">{small(`elasto_${e}`, e.toUpperCase(), 120, "elasto")}</span>)}
         </div>
         <div className="ds-extra-row">
           <b>Тонография по Нестерову</b>
           {(["od", "os"] as Eye[]).map((e) => (
             <span key={e} className="ds-pair">{e.toUpperCase()}
-              {small(`tono_${e}_ro`, "Ро", 56)}{small(`tono_${e}_c`, "С", 56)}{small(`tono_${e}_kb`, "КБ", 56)}{small(`tono_${e}_f`, "F", 56)}
+              {small(`tono_${e}_ro`, "Ро", 56, "ro", (v) => setTono(e, "ro", v))}{small(`tono_${e}_c`, "С", 56, "c", (v) => setTono(e, "c", v))}
+              {small(`tono_${e}_kb`, "КБ", 60)}{small(`tono_${e}_f`, "F", 52)}
             </span>
           ))}
         </div>
-        <span className="muted" style={{ fontSize: 13 }}>Эти три строки печатаются, только если заполнены.</span>
+        <span className="muted" style={{ fontSize: 13 }}>Эти три строки печатаются, только если заполнены. КБ и F считаются сами из Ро и С (КБ = Ро / С, F = С × (Ро − 10)) — можно исправить.</span>
       </div>
     </>,
     // 3 — Лечение

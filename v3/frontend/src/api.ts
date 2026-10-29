@@ -501,8 +501,10 @@ export const api = {
   dictionaries: () => get<Dictionaries>("/api/dictionaries"),
   searchPatients: (q: string) => get<PatientMatch[]>(`/api/patients/search?q=${encodeURIComponent(q)}`),
   caseEdit: (caseId: string) =>
-    get<{ caseId: string; number: string; status: string; dischargedAt: string | null; otherCases: number; form: AdmissionIn }>(
+    get<{ caseId: string; number: string; status: string; dischargedAt: string | null; otherCases: number; records: number; printed: number; form: AdmissionIn }>(
       `/api/cases/${encodeURIComponent(caseId)}/edit`),
+  deleteCase: (caseId: string) =>
+    request<{ number: string; patientDeleted: boolean; savedAs: string }>("DELETE", `/api/cases/${encodeURIComponent(caseId)}`),
   saveCaseEdit: (caseId: string, f: AdmissionIn) =>
     request<{ caseId: string }>("PUT", `/api/cases/${encodeURIComponent(caseId)}/edit`, f),
   admit: (a: AdmissionIn) => request<{ caseId: string; number: string; patientId: string }>("POST", "/api/admissions", a),

@@ -69,7 +69,8 @@ class AdmissionIn(BaseModel):
 
 
 def next_number(conn: sqlite3.Connection) -> str:
-    numbers = [int(r[0]) for r in conn.execute("SELECT number FROM cases") if str(r[0]).isdigit()]
+    # A deleted case (created by mistake) frees its number when it was the last one.
+    numbers = [int(r[0]) for r in conn.execute("SELECT number FROM cases WHERE deleted_at IS NULL") if str(r[0]).isdigit()]
     return str(max(numbers, default=0) + 1)
 
 
@@ -154,9 +155,11 @@ def edit_form(conn: sqlite3.Connection, case_id: str) -> dict:
     others = conn.execute("SELECT COUNT(*) FROM cases WHERE patient_id = ? AND id != ? AND deleted_at IS NULL",
                           (c["patient_id"], case_id)).fetchone()[0]
     admitted = c["admitted_at"] or ""
+    rec = conn.execute("SELECT COUNT(*), COUNT(printed_at) FROM records WHERE case_id = ? AND deleted_at IS NULL"
+                       " AND kind != 'passport'", (case_id,)).fetchone()
     return {
         "caseId": case_id, "number": c["number"], "status": c["status"], "dischargedAt": c["discharged_at"],
-        "otherCases": others,
+        "otherCases": others, "records": rec[0], "printed": rec[1],
         "form": {
             "patientId": c["patient_id"], "surname": c["surname"], "name": c["name"], "patronymic": c["patronymic"],
             "dob": c["dob"], "city": c["city"], "street": c["street"], "house": c["house"], "medCard": c["med_card"],
@@ -233,3 +236,21 @@ def dictionaries(conn: sqlite3.Connection) -> dict:
         "channels": list(CHANNELS),
         "residence": RESIDENCE,
     }
+
+
+def delete_case(conn: sqlite3.Connection, case_id: str) -> dict:
+    """A case created by mistake: marked deleted with its records, studies and prescriptions (soft delete, so the
+    phone copy can learn of it later); the patient too when this was their only case. The caller backs up first."""
+    c = conn.execute("SELECT id, number, patient_id FROM cases WHERE id = ? AND deleted_at IS NULL", (case_id,)).fetchone()
+    if c is None:
+        raise AdmissionError(404, "История не найдена")
+    ts = store.now_iso()
+    with conn:
+        for table in ("records", "studies", "prescriptions"):
+            conn.execute(f"UPDATE {table} SET deleted_at = ?, updated_at = ? WHERE case_id = ? AND deleted_at IS NULL",
+                         (ts, ts, case_id))
+        conn.execute("UPDATE cases SET deleted_at = ?, updated_at = ? WHERE id = ?", (ts, ts, case_id))
+        alone = not conn.execute("SELECT 1 FROM cases WHERE patient_id = ? AND deleted_at IS NULL", (c["patient_id"],)).fetchone()
+        if alone:
+            conn.execute("UPDATE patients SET deleted_at = ?, updated_at = ? WHERE id = ?", (ts, ts, c["patient_id"]))
+    return {"number": c["number"], "patientDeleted": alone}

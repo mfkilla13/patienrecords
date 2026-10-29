@@ -153,6 +153,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .frac { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.2; }
 .frac > span { padding: 1px 4px; min-height: 1.2em; }
 .frac > span:first-child { border-bottom: 1px solid currentColor; }
+.vision-eyes { display: inline-flex; flex-direction: column; line-height: 1.25; font-size: 0.95em; }
 .vision { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 28px; }
 .vision-item { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 

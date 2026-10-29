@@ -280,6 +280,20 @@ def _diopters(v: str) -> str:
     return _e(v) if v.endswith(("D", "d", "дптр", "Дптр")) else f"{_e(v)} D"
 
 
+def _eye_vision(d: dict, e: str) -> str:
+    """«0,8 с коррекцией −1,5 D = 1,0», «0,1 n.k.», «счет пальцев у лица»."""
+    vis, st = (d[f"vis_{e}"] or "").strip(), d[f"vis_correction_{e}"] or "пусто"
+    parts = [_e(vis)] if vis else []
+    if st == "с коррекцией":
+        corr, res = _diopters(d[f"vis_{e}_corr"]), (d[f"vis_{e}_result"] or "").strip()
+        parts.append("с коррекцией" + (f" {corr}" if corr else "") + (f" = {_e(res)}" if res else ""))
+    elif st == "n.k. (не коррег.)":
+        parts.append("n.k.")
+    elif st != "пусто":
+        parts.append(_e(st))
+    return " ".join(parts) or "—"
+
+
 def render_html(raw: dict, signature: str = "") -> str:
     """The printable text of the exam, built like 2.9's save_primary_exam()."""
     d = complete(raw)
@@ -302,23 +316,22 @@ def render_html(raw: dict, signature: str = "") -> str:
     out.append("<b>Офтальмологический осмотр:</b><br>")
     vis_od, vis_os = (d["vis_od"] or "").strip(), (d["vis_os"] or "").strip()
     vgd_od, vgd_os = (d["vgd_od"] or "").strip(), (d["vgd_os"] or "").strip()
+    status = {e: d[f"vis_correction_{e}"] or "пусто" for e in ("od", "os")}
+    plain = all(status[e] == "пусто" for e in ("od", "os"))
+    if (vis_od or vis_os) and not plain:
+        # A correction or a status on either eye: one line per eye, the way it is written by hand —
+        # a fraction with blank halves under «с коррекцией» reads as nonsense.
+        out.append('<table border="0" cellpadding="0" cellspacing="0">')
+        for i, e in enumerate(("od", "os")):
+            out.append(f'<tr>{_CELL.format("<b>Vis</b>" if i == 0 else "")}{_CELL.format(e.upper() + " =")}'
+                       f'<td style="text-align:left; padding:0 5px; vertical-align:middle;">{_eye_vision(d, e)}</td></tr>')
+        out.append("</table>")
     if vis_od or vis_os or vgd_od or vgd_os:
         out.append('<table border="0" cellpadding="0" cellspacing="0"><tr>')
-        if vis_od or vis_os:
-            row = [_CELL.format("<b>Vis</b>"), _FRAC.format(top="OD", bottom="OS"), _CELL.format("="),
-                   _FRAC.format(top=_e(vis_od) or "—", bottom=_e(vis_os) or "—")]
-            status = {e: "" if d[f"vis_correction_{e}"] in ("пусто", "") else _e(d[f"vis_correction_{e}"]) for e in ("od", "os")}
-            corrected = {e: d[f"vis_correction_{e}"] == "с коррекцией" for e in ("od", "os")}
-            if status["od"] or status["os"]:
-                row.append(_FRAC.format(top=status["od"] or " ", bottom=status["os"] or " ").replace("padding:0 5px", "padding:0 8px", 1))
-            if corrected["od"] or corrected["os"]:
-                row += [_FRAC.format(top=_diopters(d["vis_od_corr"]) if corrected["od"] else " ",
-                                     bottom=_diopters(d["vis_os_corr"]) if corrected["os"] else " "),
-                        _CELL.format("="),
-                        _FRAC.format(top=_e(d["vis_od_result"]) if corrected["od"] and d["vis_od_result"] else " ",
-                                     bottom=_e(d["vis_os_result"]) if corrected["os"] and d["vis_os_result"] else " ")]
-            row.append('<td style="padding:0 20px;"></td>')
-            out.append("".join(row))
+        if (vis_od or vis_os) and plain:
+            out.append("".join([_CELL.format("<b>Vis</b>"), _FRAC.format(top="OD", bottom="OS"), _CELL.format("="),
+                                _FRAC.format(top=_e(vis_od) or "—", bottom=_e(vis_os) or "—"),
+                                '<td style="padding:0 20px;"></td>']))
         if vgd_od or vgd_os:
             out.append("".join([_CELL.format("<b>ВГД</b>"), _FRAC.format(top="OD", bottom="OS"), _CELL.format("="),
                                 _FRAC.format(top=_e(vgd_od) or "—", bottom=_e(vgd_os) or "—"),

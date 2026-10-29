@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 /** What the grid offers. Values are written the way the forms always stored them: a comma, «+»/«-» for lenses. */
-export type PickKind = "vis" | "corr" | "vgd" | "bp" | "sys" | "dia" | "rate";
+export type PickKind = "vis" | "corr" | "vgd" | "bp" | "sys" | "dia" | "rate" | "elasto" | "ro" | "c";
 
 const range = (from: number, to: number, step: number, fmt: (v: number) => string) =>
   Array.from({ length: Math.round((to - from) / step) + 1 }, (_, i) => fmt(from + i * step));
@@ -33,6 +33,13 @@ const DIA_ROWS = [range(40, 85, 5, String), range(90, 130, 5, String)];
 const RATE_NORM = { low: 60, high: 90 };
 const RATE_ROWS = [range(50, 66, 2, String), range(68, 84, 2, String), range(86, 102, 2, String), range(104, 120, 2, String)];
 
+// Elastotonometry (Filatov–Kalfa): four readings with the 5 · 7,5 · 10 · 15 g weights, written «18-19-20-25».
+const ELASTO_ROWS = [range(10, 19, 1, String), range(20, 29, 1, String), range(30, 39, 1, String)];
+// Nesterov tonography: Ро (true IOP, mm Hg) and С (outflow facility). КБ and F are calculated from them.
+const RO_ROWS = [range(8, 17, 1, String), range(18, 26, 1, String), range(27, 36, 1, String), range(37, 45, 1, String)];
+const C_ROWS = [range(0.05, 0.14, 0.01, (v) => comma(v, 2)), range(0.15, 0.24, 0.01, (v) => comma(v, 2)),
+  range(0.25, 0.34, 0.01, (v) => comma(v, 2)), range(0.35, 0.6, 0.05, (v) => comma(v, 2))];
+
 type Part = "sys" | "dia";
 type Section = { rows: string[][]; label?: string; part?: Part };
 const SECTIONS: Record<PickKind, Section[]> = {
@@ -43,6 +50,9 @@ const SECTIONS: Record<PickKind, Section[]> = {
   sys: [{ rows: SYS_ROWS, part: "sys" }],
   dia: [{ rows: DIA_ROWS, part: "dia" }],
   rate: [{ rows: RATE_ROWS }],
+  elasto: [{ rows: ELASTO_ROWS }],
+  ro: [{ rows: RO_ROWS }],
+  c: [{ rows: C_ROWS }],
 };
 const BP_HINT = "от 140/90 — повышенное, от 180/110 — очень высокое";
 const HINT: Record<PickKind, string> = {
@@ -53,11 +63,15 @@ const HINT: Record<PickKind, string> = {
   sys: BP_HINT,
   dia: BP_HINT,
   rate: `норма ${RATE_NORM.low}–${RATE_NORM.high} уд/мин; другое — впишите сами`,
+  elasto: "четыре числа по порядку грузов: 5 · 7,5 · 10 · 15 г",
+  ro: "мм рт. ст.; десятые — впишите сами",
+  c: "мм³/мин на мм рт. ст.",
 };
 
 function tone(kind: PickKind, part: Part | undefined, v: string): string {
   const n = Number(v);
   if (kind === "vgd") return n > VGD_NORM.high ? " high" : n >= VGD_NORM.low ? " norm" : "";
+  if (kind === "ro") return n > VGD_NORM.high ? " high" : "";
   if (kind === "rate") return n < RATE_NORM.low || n > RATE_NORM.high ? " high" : " norm";
   if (part === "sys") return n >= 180 ? " crit" : n >= 140 ? " high" : "";
   if (part === "dia") return n >= 110 ? " crit" : n >= 90 ? " high" : "";
@@ -90,10 +104,18 @@ export function PickInput({ kind, value, onChange, wrapClassName, disabled, onFo
   }, [open]);
 
   const [sys, dia] = splitBp(value);
+  const series = value.split("-").map((x) => x.trim()).filter(Boolean);
   const chosen = (part: Part | undefined, v: string) =>
-    kind === "bp" ? (part === "sys" ? sys : dia) === v : v === value;
+    kind === "bp" ? (part === "sys" ? sys : dia) === v : kind === "elasto" ? false : v === value;
 
   const pick = (part: Part | undefined, v: string) => {
+    if (kind === "elasto") {
+      // Four readings in a row: each click adds the next one; after the fourth a click starts over.
+      const next = series.length >= 4 ? [v] : [...series, v];
+      onChange(next.join("-"));
+      if (next.length === 4) setOpen(false);
+      return;
+    }
     if (kind !== "bp") {
       onChange(v === value ? "" : v);      // a second click on the chosen value clears it
       setOpen(false);
@@ -134,7 +156,9 @@ export function PickInput({ kind, value, onChange, wrapClassName, disabled, onFo
               ))}
             </span>
           ))}
-          <span className="pk-hint">{HINT[kind]}</span>
+          <span className="pk-hint">
+            {kind === "elasto" && series.length < 4 ? `${["5", "7,5", "10", "15"][series.length]} г — ` : ""}{HINT[kind]}
+          </span>
         </span>
       )}
     </span>

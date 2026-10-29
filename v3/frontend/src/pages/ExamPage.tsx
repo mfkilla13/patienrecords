@@ -522,7 +522,7 @@ export function ExamPage() {
 
             <aside className="card ex-preview" aria-label="Предпросмотр">
               <b>Так будет на бумаге</b>
-              <iframe title="Предпросмотр осмотра" className="ex-frame" sandbox="" srcDoc={`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><div style="font-family:'Segoe UI',Arial,sans-serif;padding:14px">${preview}</div>`} />
+              <iframe title="Предпросмотр осмотра" className="ex-frame" sandbox="" srcDoc={`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><style>body,td,th,b{line-height:1.35!important}</style><div style="font-family:'Segoe UI',Arial,sans-serif;padding:14px">${preview}</div>`} />
               <span className="muted" style={{ fontSize: 13 }}>Вёрстка как в 2.9. На печати сверху будет «Дата | Первичный осмотр».</span>
             </aside>
           </div>
