@@ -62,3 +62,4 @@
 .kv { display: grid; grid-template-columns: 220px 1fr; gap: 10px 16px; margin: 0; }
 .kv dt { color: var(--muted); }
 .kv dd { margin: 0; }
+.cs-edit { font-size: 13px; font-weight: 600; margin-left: 6px; vertical-align: middle; }

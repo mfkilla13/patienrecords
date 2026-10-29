@@ -137,6 +137,72 @@ def admit(conn: sqlite3.Connection, a: AdmissionIn) -> dict:
     return {"caseId": cid, "number": number, "patientId": pid}
 
 
+def _ru(iso: str) -> str:
+    return f"{iso[8:10]}.{iso[5:7]}.{iso[:4]}"
+
+
+def edit_form(conn: sqlite3.Connection, case_id: str) -> dict:
+    """The admission data of a case as the edit form shows it (the same fields as at admission)."""
+    c = conn.execute(
+        "SELECT c.*, p.surname, p.name, p.patronymic, p.dob, p.city, p.street, p.house, p.residence"
+        " FROM cases c JOIN patients p ON p.id = c.patient_id WHERE c.id = ? AND c.deleted_at IS NULL",
+        (case_id,)).fetchone()
+    if c is None:
+        raise AdmissionError(404, "История не найдена")
+    others = conn.execute("SELECT COUNT(*) FROM cases WHERE patient_id = ? AND id != ? AND deleted_at IS NULL",
+                          (c["patient_id"], case_id)).fetchone()[0]
+    admitted = c["admitted_at"] or ""
+    return {
+        "caseId": case_id, "number": c["number"], "status": c["status"], "dischargedAt": c["discharged_at"],
+        "otherCases": others,
+        "form": {
+            "patientId": c["patient_id"], "surname": c["surname"], "name": c["name"], "patronymic": c["patronymic"],
+            "dob": c["dob"], "city": c["city"], "street": c["street"], "house": c["house"], "medCard": c["med_card"],
+            "admittedDate": admitted[:10], "admittedTime": admitted[11:16], "dxAdmission": c["dx_admission"],
+            "dxClinical": c["dx_clinical"], "dxComorbid": c["dx_comorbid"], "channel": c["admission_channel"],
+            "residence": c["residence"],
+        },
+    }
+
+
+def save_edit(conn: sqlite3.Connection, case_id: str, a: AdmissionIn) -> dict:
+    """Fix what was typed at admission. The patient's own data (name, date of birth, address) is the same
+    in all their stays, so it changes there too; the stay's data changes only in this case."""
+    from .report import CHANNELS, RESIDENCE
+    c = conn.execute("SELECT * FROM cases WHERE id = ? AND deleted_at IS NULL", (case_id,)).fetchone()
+    if c is None:
+        raise AdmissionError(404, "История не найдена")
+    today = date.today().isoformat()
+    if not a.surname:
+        raise AdmissionError(422, "Фамилия обязательна")
+    if not a.dxAdmission:
+        raise AdmissionError(422, "Укажите диагноз при поступлении")
+    if a.admittedDate > today:
+        raise AdmissionError(422, "Дата поступления не может быть позже сегодняшней")
+    if a.dob and (a.dob > today or a.dob > a.admittedDate):
+        raise AdmissionError(422, "Дата рождения позже даты поступления — проверьте год")
+    if c["discharged_at"] and a.admittedDate > c["discharged_at"][:10]:
+        raise AdmissionError(422, f"Дата поступления позже даты выписки ({_ru(c['discharged_at'])})")
+    first = conn.execute("SELECT MIN(substr(recorded_at, 1, 10)) FROM records WHERE case_id = ? AND deleted_at IS NULL"
+                         " AND kind NOT IN ('passport', 'discharge_summary')", (case_id,)).fetchone()[0]
+    if first and a.admittedDate > first:
+        raise AdmissionError(422, f"В истории есть записи раньше этой даты (от {_ru(first)}) — поступление не может быть позже")
+    if a.channel and a.channel not in CHANNELS:
+        raise AdmissionError(422, "Нет такого способа госпитализации")
+    if a.residence not in RESIDENCE:
+        raise AdmissionError(422, "Нет такого варианта места жительства")
+    ts = store.now_iso()
+    admitted = f"{a.admittedDate}T{a.admittedTime}" if a.admittedTime else a.admittedDate
+    with conn:
+        conn.execute("UPDATE patients SET surname = ?, name = ?, patronymic = ?, dob = ?, city = ?, street = ?, house = ?,"
+                     " residence = ?, updated_at = ? WHERE id = ?",
+                     (a.surname, a.name, a.patronymic, a.dob, a.city, a.street, a.house, a.residence, ts, c["patient_id"]))
+        conn.execute("UPDATE cases SET med_card = ?, admitted_at = ?, dx_admission = ?, dx_clinical = ?, dx_comorbid = ?,"
+                     " admission_channel = ?, updated_at = ? WHERE id = ?",
+                     (a.medCard, admitted, a.dxAdmission, a.dxClinical, a.dxComorbid, a.channel, ts, case_id))
+    return {"caseId": case_id}
+
+
 def dictionaries(conn: sqlite3.Connection) -> dict:
     """Lists for suggestions. Towns and streets also grow from addresses already in the database.
 

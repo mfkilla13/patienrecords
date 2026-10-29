@@ -42,12 +42,14 @@ def test_only_archived_newest_first_with_days_and_eye(client):
     assert r["total"] == 3 and [x["number"] for x in r["rows"]] == ["12", "11", "10"]
     first = r["rows"][2]
     assert first["days"] == 7 and first["eye"] == "OD" and first["groups"] == ["Катаракта"]
-    assert [p["value"] for p in r["periods"]] == ["all", "2026", "2026-05", "2026-04"]
+    assert r["firstDate"] < r["lastDate"] and r["firstDate"].startswith("2026-04") and r["lastDate"].startswith("2026-05")
 
 
 def test_filters_and_search(client):
     get = lambda **kw: [x["number"] for x in client.get("/api/archive", params=kw).json()["rows"]]  # noqa: E731
-    assert get(period="2026-04") == ["11", "10"]
+    assert get(date_from="2026-04-01", date_to="2026-04-30") == ["11", "10"]
+    assert get(date_from="2026-05-01") == ["12"]                     # an open end
+    assert get(date_to="2026-03-31") == []
     assert get(dx="Глаукома") == ["11"]
     assert get(outcome="без перемен") == ["11"]
     assert get(q="елкина") == ["10"]            # ё and case folded
@@ -59,7 +61,7 @@ def test_filters_and_search(client):
 def test_paging_and_csv(client):
     r = client.get("/api/archive", params={"page": 9}).json()
     assert r["page"] == 1 and r["pages"] == 1          # out of range falls back to the last page
-    csv = client.get("/api/archive.csv", params={"period": "2026-04"})
+    csv = client.get("/api/archive.csv", params={"date_from": "2026-04-01", "date_to": "2026-04-30"})
     assert csv.status_code == 200 and "attachment" in csv.headers["content-disposition"]
     text = csv.content.decode("utf-8")
     assert text.startswith("﻿№ истории;") and "Ёлкина Анна Ивановна;14.05.1956" in text and "Сидорова" not in text

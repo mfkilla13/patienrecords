@@ -315,6 +315,16 @@ def create_app(db_path: Path | None = None, auto_backup: bool = False) -> FastAP
     def get_patient_search(q: str = ""):
         return admission.search(conn, q)
 
+    @app.get("/api/cases/{case_id}/edit")
+    def get_case_edit(case_id: str):
+        return _call(admission.AdmissionError, admission.edit_form, case_id)
+
+    @app.put("/api/cases/{case_id}/edit")
+    def put_case_edit(case_id: str, body: admission.AdmissionIn):
+        result = _call(admission.AdmissionError, admission.save_edit, case_id, body)
+        printjobs.forget_cache()      # sheet headings carry the name and the dates
+        return result
+
     @app.post("/api/admissions", status_code=201)
     def post_admission(body: admission.AdmissionIn):
         return _call(admission.AdmissionError, admission.admit, body)
@@ -549,13 +559,13 @@ def create_app(db_path: Path | None = None, auto_backup: bool = False) -> FastAP
         return {"ok": True}
 
     @app.get("/api/archive")
-    def get_archive(q: str = "", period: str = "all", dx: str = "", outcome: str = "", page: int = 1):
-        return archive.search(conn, q, period, dx, outcome, page)
+    def get_archive(q: str = "", date_from: str = "", date_to: str = "", dx: str = "", outcome: str = "", page: int = 1):
+        return archive.search(conn, q, date_from, date_to, dx, outcome, page)
 
     @app.get("/api/archive.csv")
-    def get_archive_csv(q: str = "", period: str = "all", dx: str = "", outcome: str = ""):
-        return Response(archive.export_csv(conn, q, period, dx, outcome), media_type="text/csv; charset=utf-8",
-                        headers={"Content-Disposition": f'attachment; filename="{archive.export_name(period)}"'})
+    def get_archive_csv(q: str = "", date_from: str = "", date_to: str = "", dx: str = "", outcome: str = ""):
+        return Response(archive.export_csv(conn, q, date_from, date_to, dx, outcome), media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="{archive.export_name(date_from, date_to)}"'})
 
     def _bk(fn, *args):
         try:

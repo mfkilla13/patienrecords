@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, ArchiveResult } from "../api";
-import { fullDate, plural, shortDate } from "../format";
+import { fullDate, plural, shortDate, todayIso } from "../format";
 import "./department.css";
 import "./archive.css";
 
@@ -9,12 +9,34 @@ const OUTCOME_TONES: Record<string, string> = {
   "улучшение": "tone-green", "без перемен": "tone-neutral", "ухудшение": "tone-amber", "перевод": "tone-blue",
 };
 
+const pad = (n: number) => String(n).padStart(2, "0");
+const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+const MONTHS = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
+
+type Chip = { key: string; label: string; from: string; to: string };
+
+/** Quick periods: every year since the first discharge in the archive, and the months of this year so far.
+ *  Any other range is typed as dates. */
+function quickChips(firstDate: string | null | undefined): { years: Chip[]; months: Chip[] } {
+  const t = new Date();
+  const y = t.getFullYear();
+  const first = firstDate ? Number(firstDate.slice(0, 4)) : y;
+  const years = [{ key: "all", label: "Всё время", from: "", to: "" }];
+  for (let yy = Math.min(first, y); yy <= y; yy++) years.push({ key: String(yy), label: String(yy), from: `${yy}-01-01`, to: `${yy}-12-31` });
+  const months = Array.from({ length: t.getMonth() + 1 }, (_, m) => (
+    { key: `${y}-${m}`, label: MONTHS[m], from: iso(new Date(y, m, 1)), to: iso(new Date(y, m + 1, 0)) }));
+  return { years, months };
+}
+
 export function ArchivePage() {
   const navigate = useNavigate();
   // Filters live in the address, so coming back from an opened history keeps them.
   const [params, setParams] = useSearchParams();
   const q = params.get("q") ?? "";
-  const period = params.get("period") ?? "all";
+  const from = params.get("from") ?? "";
+  const to = params.get("to") ?? "";
+
   const dx = params.get("dx") ?? "";
   const outcome = params.get("outcome") ?? "";
   const page = Number(params.get("page") ?? "1") || 1;
@@ -25,7 +47,7 @@ export function ArchivePage() {
   const set = (patch: Record<string, string>) => {
     const next = new URLSearchParams(params);
     for (const [k, v] of Object.entries({ page: "1", ...patch })) {
-      if (v && !(k === "period" && v === "all") && !(k === "page" && v === "1")) next.set(k, v);
+      if (v && !(k === "page" && v === "1")) next.set(k, v);
       else next.delete(k);
     }
     setParams(next, { replace: true });
@@ -39,11 +61,17 @@ export function ArchivePage() {
   }, [query]);
 
   useEffect(() => {
-    api.archiveList({ q, period, dx, outcome, page }).then(setData, (e: Error) => setError(e.message));
-  }, [q, period, dx, outcome, page]);
+    api.archiveList({ q, from, to, dx, outcome, page }).then(setData, (e: Error) => setError(e.message));
+  }, [q, from, to, dx, outcome, page]);
 
-  const filtered = Boolean(q || dx || outcome || period !== "all");
-  const periodLabel = data?.periods.find((p) => p.value === period)?.label ?? "";
+  const filtered = Boolean(q || dx || outcome || from || to);
+  const chips = quickChips(data?.firstDate);
+  const chip = (c: Chip) => (
+    <button key={c.key} type="button" className={"chip" + (c.from === from && c.to === to ? " on" : "")}
+      aria-pressed={c.from === from && c.to === to} onClick={() => set({ from: c.from, to: c.to })}>{c.label}</button>
+  );
+  const periodLabel = !from && !to ? "" : from && to ? `выписаны ${fullDate(from)} — ${fullDate(to)}`
+    : from ? `выписаны с ${fullDate(from)}` : `выписаны по ${fullDate(to)}`;
 
   return (
     <main className="page dep">
@@ -61,13 +89,15 @@ export function ArchivePage() {
             <input type="search" placeholder="Фамилия, № истории, дата рождения, диагноз" value={query} onChange={(e) => setQuery(e.target.value)} />
           </span>
         </label>
-        <label className="lbl ar-sel">Выписаны
-          <select className="in ar-pill" value={period} onChange={(e) => set({ period: e.target.value })}>
-            {(data?.periods ?? [{ value: "all", label: "За всё время" }]).map((p) => (
-              <option key={p.value} value={p.value}>{p.value.length === 4 ? p.label : p.value === "all" ? p.label : `   ${p.label}`}</option>
-            ))}
-          </select>
-        </label>
+        <div className="lbl ar-period">Выписаны
+          <span className="ar-period-row">
+            <input className="in ar-date" type="date" aria-label="Выписаны с" value={from} min={data?.firstDate?.slice(0, 10)} max={to || todayIso()}
+              onChange={(e) => set({ from: e.target.value })} />
+            <span className="muted">—</span>
+            <input className="in ar-date" type="date" aria-label="Выписаны по" value={to} min={from || undefined} max={todayIso()}
+              onChange={(e) => set({ to: e.target.value })} />
+          </span>
+        </div>
         <label className="lbl ar-sel">Диагноз
           <select className="in ar-pill" value={dx} onChange={(e) => set({ dx: e.target.value })}>
             <option value="">Все диагнозы</option>
@@ -80,9 +110,15 @@ export function ArchivePage() {
             {data?.outcomes.map((o) => <option key={o.value} value={o.value}>{o.value} ({o.count})</option>)}
           </select>
         </label>
-        {filtered && (
-          <button type="button" className="link-btn ar-reset" onClick={() => { setQuery(""); setParams(new URLSearchParams(), { replace: true }); }}>Сбросить</button>
-        )}
+        <div className="ar-chips" aria-label="Быстрый выбор периода">
+          {chips.years.map(chip)}
+          <span className="ar-chips-sep" aria-hidden="true" />
+          <span className="muted ar-chips-year">{new Date().getFullYear()}:</span>
+          {chips.months.map(chip)}
+          {filtered && (
+            <button type="button" className="link-btn ar-reset" onClick={() => { setQuery(""); setParams(new URLSearchParams(), { replace: true }); }}>Сбросить фильтры</button>
+          )}
+        </div>
       </section>
 
       {error && <div className="card" style={{ padding: 24 }}>Не удалось открыть архив: {error}</div>}
@@ -90,9 +126,9 @@ export function ArchivePage() {
       <section className="card dep-table-card" aria-label="Результаты">
         <div className="ar-head">
           <b>Найдено {data?.found ?? "…"}</b>
-          {periodLabel && period !== "all" && <span className="muted">· {periodLabel.toLowerCase()}</span>}
+          {periodLabel && <span className="muted">· {periodLabel}</span>}
           <div style={{ flex: 1 }} />
-          <a className="btn small" href={api.archiveCsvUrl({ q, period, dx, outcome })} download>Выгрузить в Excel</a>
+          <a className="btn small" href={api.archiveCsvUrl({ q, from, to, dx, outcome })} download>Выгрузить в Excel</a>
         </div>
         <div style={{ overflowX: "auto" }}>
           <table className="dep-table ar-table">

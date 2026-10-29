@@ -12,6 +12,7 @@ import { PrintPage } from "./pages/PrintPage";
 import { RoundPage } from "./pages/RoundPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { StatsPage } from "./pages/StatsPage";
+import { CaseEditPage } from "./pages/CaseEditPage";
 import { ReportPage } from "./pages/ReportPage";
 import { NewRecordPage, RecordPage } from "./pages/RecordPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
@@ -51,6 +52,7 @@ export function App() {
         <Route path="/case/:caseId/diary" element={<DiaryPage />} />
         <Route path="/case/:caseId/diary/:recordId" element={<DiaryPage />} />
         <Route path="/case/:caseId/new" element={<NewRecordPage />} />
+        <Route path="/case/:caseId/edit" element={<CaseEditPage />} />
         <Route path="/case/:caseId/record/new/:kind" element={<RecordPage />} />
         <Route path="/case/:caseId/record/:recordId" element={<RecordPage />} />
         <Route path="/case/:caseId/print" element={<PrintPage />} />

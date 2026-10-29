@@ -35,8 +35,6 @@ DX_GROUPS: dict[str, tuple[str, ...]] = {
 }
 OTHER = "Другое"
 NO_DX = "Не указан"
-MONTHS = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь",
-          "Ноябрь", "Декабрь"]
 _EYE = re.compile(r"\b(OD|OS|OU)\b")
 
 
@@ -85,27 +83,25 @@ def _matches(row: dict, q: str) -> bool:
     return True
 
 
-def _in_period(row: dict, period: str) -> bool:
-    if not period or period == "all":
+def _in_period(row: dict, date_from: str, date_to: str) -> bool:
+    """Discharged within [date_from, date_to]; either end may be empty (open)."""
+    if not date_from and not date_to:
         return True
-    return (row["dischargedAt"] or "").startswith(period)   # "2026" or "2026-04"
+    d = to_date(row["dischargedAt"])
+    return bool(d) and (not date_from or d >= date_from) and (not date_to or d <= date_to)
 
 
-def search(conn: sqlite3.Connection, q: str = "", period: str = "all", dx: str = "", outcome: str = "",
-           page: int = 1, size: int = 12) -> dict:
+def search(conn: sqlite3.Connection, q: str = "", date_from: str = "", date_to: str = "", dx: str = "",
+           outcome: str = "", page: int = 1, size: int = 12) -> dict:
     rows = _all(conn)
-    found = [r for r in rows if _in_period(r, period) and (not dx or dx in r["groups"])
+    date_from, date_to = to_date(date_from) or "", to_date(date_to) or ""
+    found = [r for r in rows if _in_period(r, date_from, date_to) and (not dx or dx in r["groups"])
              and (not outcome or r["outcome"] == outcome) and (not q.strip() or _matches(r, q))]
     pages = max(1, -(-len(found) // size))
     page = min(max(1, page), pages)
 
     # Filter options come from the whole archive, so a choice never leads to an empty list by itself.
-    months = sorted({(r["dischargedAt"] or "")[:7] for r in rows if r["dischargedAt"]}, reverse=True)
-    years = sorted({m[:4] for m in months}, reverse=True)
-    periods = [{"value": "all", "label": "За всё время"}]
-    for y in years:
-        periods.append({"value": y, "label": f"Весь {y} год"})
-        periods += [{"value": m, "label": f"{MONTHS[int(m[5:7]) - 1]} {y}"} for m in months if m.startswith(y)]
+    dates = sorted(d for d in (to_date(r["dischargedAt"]) for r in rows) if d)
     groups: dict[str, int] = {}
     for r in rows:
         for g in r["groups"]:
@@ -118,7 +114,8 @@ def search(conn: sqlite3.Connection, q: str = "", period: str = "all", dx: str =
     return {
         "total": len(rows), "found": len(found), "page": page, "pages": pages, "size": size,
         "rows": found[(page - 1) * size: page * size],
-        "periods": periods,
+        "firstDate": dates[0] if dates else None,
+        "lastDate": dates[-1] if dates else None,
         "dxGroups": [{"value": g, "count": n} for g, n in sorted(groups.items(), key=lambda kv: (kv[0] in (OTHER, NO_DX), kv[0] == NO_DX, -kv[1]))],
         "outcomes": [{"value": o, "count": n} for o, n in sorted(outcomes.items(), key=lambda kv: -kv[1])],
     }
@@ -129,9 +126,10 @@ def _ru(iso: str | None) -> str:
     return f"{d[8:10]}.{d[5:7]}.{d[:4]}" if d else ""
 
 
-def export_csv(conn: sqlite3.Connection, q: str = "", period: str = "all", dx: str = "", outcome: str = "") -> bytes:
+def export_csv(conn: sqlite3.Connection, q: str = "", date_from: str = "", date_to: str = "", dx: str = "",
+               outcome: str = "") -> bytes:
     """The filtered list for Excel: «;» separated with a BOM, which Russian Excel opens directly."""
-    res = search(conn, q, period, dx, outcome, page=1, size=10 ** 6)
+    res = search(conn, q, date_from, date_to, dx, outcome, page=1, size=10 ** 6)
     out = io.StringIO()
     w = csv.writer(out, delimiter=";", lineterminator="\r\n")
     w.writerow(["№ истории", "Пациент", "Дата рождения", "Диагноз", "Глаз", "Поступление", "Выписка", "Койко-дней", "Исход"])
@@ -141,5 +139,7 @@ def export_csv(conn: sqlite3.Connection, q: str = "", period: str = "all", dx: s
     return ("﻿" + out.getvalue()).encode("utf-8")
 
 
-def export_name(period: str) -> str:
-    return f"medqt-arhiv-{period if period and period != 'all' else date.today().isoformat()}.csv"
+def export_name(date_from: str = "", date_to: str = "") -> str:
+    if date_from or date_to:
+        return f"medqt-arhiv-{date_from or 'nachalo'}_{date_to or date.today().isoformat()}.csv"
+    return f"medqt-arhiv-{date.today().isoformat()}.csv"

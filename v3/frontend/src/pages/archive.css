@@ -16,3 +16,11 @@
 .ar-pg { width: 42px; height: 42px; border-radius: 50%; border: none; background: var(--chip); color: var(--text); font-size: 15px; cursor: pointer; }
 .ar-pg.on { background: var(--accent); color: #fff; font-weight: 600; }
 .ar-pg:disabled { background: var(--bg); color: var(--dash); cursor: default; }
+.ar-period { flex: 0 1 auto; }
+.ar-period-row { display: flex; align-items: center; gap: 8px; }
+.ar-period-row .in { flex: none; width: 160px; padding: 0 12px; }
+.ar-chips { flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; order: 10; }
+.ar-chips .chip { height: 32px; font-size: 13px; padding: 0 12px; }
+.ar-chips-sep { width: 1px; height: 22px; background: var(--line); margin: 0 6px; }
+.ar-chips-year { font-size: 13px; margin-right: 2px; }
+.ar-chips .ar-reset { margin-left: auto; height: 32px; }

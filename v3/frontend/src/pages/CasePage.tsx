@@ -202,7 +202,7 @@ export function CasePage() {
           </Link>
           <div className="avatar tone-green cs-avatar" aria-hidden="true">{initials(p.surname, p.name)}</div>
           <div className="cs-who">
-            <h1>{fio}</h1>
+            <h1>{fio} <Link to={`/case/${card.caseId}/edit`} className="cs-edit" title="Исправить Ф. И. О., дату рождения, адрес, данные поступления">изменить</Link></h1>
             <div className="muted">
               История № {card.number}
               {card.medCard && ` · мед. карта ${card.medCard}`}
@@ -375,7 +375,11 @@ export function CasePage() {
 
           {tab === "passport" && (
             <>
-              <div className="cs-main-head"><h2>Паспортная часть</h2></div>
+              <div className="cs-main-head">
+                <h2>Паспортная часть</h2>
+                <div style={{ flex: 1 }} />
+                <Link to={`/case/${card.caseId}/edit`} className="btn">Изменить данные</Link>
+              </div>
               <article className="rec">
                 <dl className="kv">
                   <dt>Ф. И. О.</dt><dd>{fio}</dd>

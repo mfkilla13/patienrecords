@@ -352,15 +352,18 @@ export interface ArchiveRow {
 export interface ArchiveResult {
   total: number; found: number; page: number; pages: number; size: number;
   rows: ArchiveRow[];
-  periods: { value: string; label: string }[];
+  firstDate: string | null;
+  lastDate: string | null;
   dxGroups: { value: string; count: number }[];
   outcomes: { value: string; count: number }[];
 }
 
-export interface ArchiveQuery { q: string; period: string; dx: string; outcome: string; page?: number }
+/** from/to: the discharge date range, either end may be empty. */
+export interface ArchiveQuery { q: string; from: string; to: string; dx: string; outcome: string; page?: number }
 
-const archiveParams = (a: ArchiveQuery) =>
-  new URLSearchParams(Object.entries(a).filter(([, v]) => v !== "" && v !== undefined).map(([k, v]) => [k, String(v)])).toString();
+const archiveParams = ({ from, to, ...rest }: ArchiveQuery) =>
+  new URLSearchParams(Object.entries({ ...rest, date_from: from, date_to: to })
+    .filter(([, v]) => v !== "" && v !== undefined).map(([k, v]) => [k, String(v)])).toString();
 
 export interface BackupItem { name: string; kind: string; kindLabel: string; at: string; size: number }
 
@@ -478,6 +481,11 @@ export const api = {
   cancelPrint: (jobId: string) => request<{ ok: true }>("POST", `/api/print-jobs/${jobId}/cancel`),
   dictionaries: () => get<Dictionaries>("/api/dictionaries"),
   searchPatients: (q: string) => get<PatientMatch[]>(`/api/patients/search?q=${encodeURIComponent(q)}`),
+  caseEdit: (caseId: string) =>
+    get<{ caseId: string; number: string; status: string; dischargedAt: string | null; otherCases: number; form: AdmissionIn }>(
+      `/api/cases/${encodeURIComponent(caseId)}/edit`),
+  saveCaseEdit: (caseId: string, f: AdmissionIn) =>
+    request<{ caseId: string }>("PUT", `/api/cases/${encodeURIComponent(caseId)}/edit`, f),
   admit: (a: AdmissionIn) => request<{ caseId: string; number: string; patientId: string }>("POST", "/api/admissions", a),
   examDraft: (caseId: string) => get<ExamDraft>(`/api/cases/${encodeURIComponent(caseId)}/exam-draft`),
   saveExam: (caseId: string, data: ExamData, recordId: string | null, templateId: string | null) =>
