@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, Stats, StatsPoint } from "../api";
 import { fullDate, plural, todayIso } from "../format";
+import { AdmissionsCalendar, Occupancy } from "../components/StatsDaily";
 import "./stats.css";
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -198,6 +199,18 @@ export function StatsPage() {
           </p>
 
           <div className="sx-grid">
+            <div className="sx-wide">
+              <Chart title="Занятость коек" sub="сколько пациентов было в отделении каждый день"
+                table={data.daily.filter((d) => d.inDepartment).map((d) => [fullDate(d.date), String(d.inDepartment)])}>
+                <Occupancy days={data.daily} beds={data.beds} />
+              </Chart>
+            </div>
+            <div className="sx-wide">
+              <Chart title="Календарь поступлений" sub="каждая клетка — день; чем темнее, тем больше поступило"
+                table={data.daily.filter((d) => d.admitted).map((d) => [fullDate(d.date), String(d.admitted)])}>
+                <AdmissionsCalendar days={data.daily} />
+              </Chart>
+            </div>
             <Chart title="Госпитализации" sub={`поступившие ${g}`} table={nonEmpty(data.admissions, people)}>
               <Columns data={data.admissions} unit={people} empty="За этот период никто не поступал." />
             </Chart>

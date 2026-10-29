@@ -393,6 +393,8 @@ export interface Stats {
   totals: { admitted: number; discharged: number; avgStay: number | null; inDepartment: number };
   admissions: StatsPoint[]; discharges: StatsPoint[]; avgStay: StatsPoint[];
   diagnoses: { label: string; value: number }[]; outcomes: { label: string; value: number }[];
+  daily: { date: string; inDepartment: number; admitted: number }[];
+  beds: number | null;
 }
 
 export interface ReportRow { label: string; count: number; share: number | null; bedDays: number; avgStay: number | null }

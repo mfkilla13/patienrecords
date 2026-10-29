@@ -41,3 +41,17 @@
   .sx-grid { grid-template-columns: 1fr; }
   .sx-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+:root { --hm-0: #f0ece6; --hm-1: #cfe3d6; --hm-2: #93c0a5; --hm-3: #579b76; --hm-4: #2e6b4f; }
+.sx-wide { grid-column: 1 / -1; display: flex; flex-direction: column; }
+.sx-area { fill: var(--accent); fill-opacity: 0.1; }
+.sx-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.sx-beds { stroke: var(--muted); stroke-width: 1; opacity: 0.6; }
+.sx-cross { stroke: var(--muted); stroke-width: 1; opacity: 0.5; }
+.sx-dot { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+.sx-cal-wrap { position: relative; display: flex; flex-direction: column; gap: 10px; }
+.sx-cal-scroll { overflow-x: auto; padding-bottom: 4px; }
+.sx-cal-scroll svg { display: block; }
+.sx-cell:hover { stroke: var(--text); stroke-width: 1.5; }
+.sx-cal-legend { display: flex; align-items: center; gap: 4px; font-size: 12px; flex-wrap: wrap; }
+.sx-cal-key { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.sx-cal-note { margin-left: auto; }

@@ -14,6 +14,7 @@ from datetime import date, timedelta
 from .archive import NO_DX, dx_groups
 from .discharge import stay_days
 from .importer import to_date
+from . import settings
 
 MONTHS = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"]
 
@@ -102,6 +103,31 @@ def compute(conn: sqlite3.Connection, date_from: str | None, date_to: str | None
         items += [(k, counts[k]) for k in last if k in counts]
         return [{"label": k[:1].upper() + k[1:], "value": v} for k, v in items]
 
+    # Day by day (up to today): how many lay in the department that night, and how many came in.
+    # A patient occupies a bed from the admission day up to (not including) the discharge day.
+    days_end = min(end, today)
+    came: dict[str, int] = {}
+    left: dict[str, int] = {}
+    spans = []
+    for r in rows:
+        a, out = to_date(r["admitted_at"]), to_date(r["discharged_at"])
+        if not a or (out and out < a):          # a typo in the dates: leave it out rather than count it wrong
+            continue
+        spans.append((a, out))
+        came[a] = came.get(a, 0) + 1
+        if out:
+            left[out] = left.get(out, 0) + 1
+    # The first day counted directly, every next one from the day before: + came in, − went home.
+    now = sum(1 for a, out in spans if a <= lo and (not out or out > lo))
+    daily, d = [], start
+    while d <= days_end:
+        iso = d.isoformat()
+        if iso > lo:
+            now += came.get(iso, 0) - left.get(iso, 0)
+        daily.append({"date": iso, "inDepartment": now, "admitted": came.get(iso, 0)})
+        d += timedelta(days=1)
+    beds = settings.get(conn).get("beds") or ""
+
     avg = lambda xs: round(sum(xs) / len(xs), 1) if xs else None
     return {
         "from": lo, "to": hi, "group": group,
@@ -117,4 +143,6 @@ def compute(conn: sqlite3.Connection, date_from: str | None, date_to: str | None
         "diagnoses": ranked(diagnoses, ("Другое", NO_DX)),
         "outcomes": ranked(outcomes, ("не указан",)),
         "firstDate": first,
+        "daily": daily,
+        "beds": int(beds) if beds.isdigit() else None,
     }

@@ -37,6 +37,13 @@ def test_five_charts_and_grouping(tmp_path):
     assert s["outcomes"] == [{"label": "Улучшение", "value": 2}, {"label": "Без перемен", "value": 1}]
     assert stats.compute(conn, None, None, today=date(2030, 1, 1))["group"] == "year"
 
+    s = stats.compute(conn, "2026-03-01", "2026-03-31", today=date(2026, 3, 20))
+    by = {d["date"]: d for d in s["daily"]}
+    assert len(s["daily"]) == 20 and s["beds"] == 20                     # up to today only
+    assert by["2026-03-02"]["inDepartment"] == 1 and by["2026-03-02"]["admitted"] == 1
+    assert by["2026-03-11"]["inDepartment"] == 0                          # discharged that day: the bed is free
+    assert by["2026-03-20"]["inDepartment"] == 1
+
 
 def test_api_rejects_reversed_period(tmp_path):
     client = TestClient(create_app(tmp_path / "t.db"))
