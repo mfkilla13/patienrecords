@@ -1,0 +1,13 @@
+# MedQT 3: exact versions the program is built and tested with (local build and the GitHub release build).
+fastapi==0.115.14
+pydantic==2.14.1
+uvicorn==0.32.1
+pywebview==5.4
+reportlab==4.5.1
+pypdfium2==4.30.0
+pywin32==308
+pillow==11.3.0
+pyinstaller==6.22.3
+pytest==8.4.2
+httpx==0.28.1
+certifi==2026.10.23

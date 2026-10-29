@@ -1,0 +1,79 @@
+# MedQT 3 (folder v3/): builds the Windows program and publishes it as a GitHub release.
+# Runs on tags «medqt3-<version>» only — never «v…», those start the 2.9 build (build-windows-exe.yml)
+# and 2.9's own update check. The program on the doctor's laptop looks for releases with this prefix.
+name: MedQT 3 release
+
+on:
+  push:
+    tags: ["medqt3-*"]
+  workflow_dispatch:        # a test build from any branch: the archive is kept as an artifact, nothing is published
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: v3
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: v3/frontend/package-lock.json
+
+      - name: Python packages
+        run: |
+          python -m venv .venv
+          .venv\Scripts\python -m pip install --upgrade pip
+          .venv\Scripts\pip install -r requirements.txt
+
+      - name: Interface packages
+        working-directory: v3/frontend
+        run: npm ci
+
+      - name: Version matches the tag
+        run: |
+          $v = .venv\Scripts\python -c "import sys; sys.path.insert(0, 'backend'); import medqt3; print(medqt3.__version__)"
+          "VERSION=$v" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          if ($env:GITHUB_REF_TYPE -eq "tag" -and $env:GITHUB_REF_NAME -ne "medqt3-$v") {
+            throw "Метка $env:GITHUB_REF_NAME, а в программе версия $v (medqt3/__init__.py)."
+          }
+
+      - name: Tests
+        working-directory: v3/backend
+        env:
+          PYTHONIOENCODING: utf-8
+        run: ..\.venv\Scripts\python -m pytest -q
+
+      - name: Build (with the program's self-test)
+        env:
+          PYTHONIOENCODING: utf-8
+        run: .venv\Scripts\python build.py
+
+      - name: Keep the archive (test build)
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: MedQT-${{ env.VERSION }}-win
+          path: |
+            v3/dist/MedQT-${{ env.VERSION }}-win.zip
+            v3/dist/MedQT-${{ env.VERSION }}-win.zip.sha256
+
+      - name: Publish the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create $env:GITHUB_REF_NAME `
+            "dist/MedQT-$env:VERSION-win.zip" "dist/MedQT-$env:VERSION-win.zip.sha256" `
+            --title "MedQT $env:VERSION" --notes-file release-notes.txt --latest=false

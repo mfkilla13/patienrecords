@@ -60,6 +60,7 @@ def run(out_path: str) -> None:
         check("предпросмотр (pdfium)", lambda: f"{len(get(f'/api/print-jobs/{job['jobId']}/pages/1.png'))} байт PNG")
         check("принтеры Windows", lambda: ", ".join(json.loads(get("/api/printers"))["printers"]) or "не найдено ни одного")
         check("резервная копия", lambda: post("/api/backups", {})["name"])
+        check("сертификаты для GitHub (обновления)", lambda: f"{Path(__import__('certifi').where()).stat().st_size // 1024} КБ")
         server.should_exit = True
     except Exception:
         ok = False

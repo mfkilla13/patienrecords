@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api, Department, DepartmentPatient, Stage } from "../api";
+import { api, Department, DepartmentPatient, Stage, UpdateStatus } from "../api";
 import { initials, plural, shortDate } from "../format";
 import "./department.css";
 
@@ -73,6 +73,18 @@ export function DepartmentPage() {
     api.department().then(setData, (e: Error) => setError(e.message));
   }, []);
 
+  // A new version: the check runs in the background a few seconds after start, so ask again a little later.
+  const [update, setUpdate] = useState<UpdateStatus | null>(null);
+  useEffect(() => {
+    let t = 0;
+    const ask = (again: boolean) => api.update().then((u) => {
+      setUpdate(u);
+      if (again && !u.checkedAt) t = window.setTimeout(() => ask(false), 10000);
+    }, () => undefined);
+    ask(true);
+    return () => window.clearTimeout(t);
+  }, []);
+
   const rows = useMemo(
     () => (data ? data.patients.filter((p) => matches(p, filter, query.trim())) : []),
     [data, filter, query],
@@ -105,6 +117,13 @@ export function DepartmentPage() {
         </Link>
       </div>
 
+      {update?.available && update.latest && (
+        <Link to="/dictionaries?s=update" className="dep-update">
+          <b>Доступна новая версия {update.latest.version}</b>
+          <span>{update.latest.notes.split("\n")[0] || "Посмотреть, что нового"}</span>
+          <span className="dep-update-go">Что нового и обновить →</span>
+        </Link>
+      )}
       {data && <Summary s={data.summary} today={data.today} />}
 
       <section className="card dep-table-card" aria-label="Пациенты в отделении">

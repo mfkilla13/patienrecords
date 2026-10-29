@@ -72,11 +72,13 @@ def main() -> None:
     from .api import create_app
 
     port = _free_port()
-    server = start_server(create_app(auto_backup=True), port)
+    app = create_app(auto_backup=True)
+    server = start_server(app, port)
     url = f"http://127.0.0.1:{port}"
     _wait_ready(url)
     webview.settings["ALLOW_DOWNLOADS"] = True    # «Выгрузить в Excel» asks where to save the file
-    webview.create_window("MedQT", url, width=1440, height=940, min_size=(1024, 700))
+    window = webview.create_window("MedQT", url, width=1440, height=940, min_size=(1024, 700))
+    app.state.on_quit = window.destroy          # «Перезапустить» after an update
     webview.start()
     server.should_exit = True
 

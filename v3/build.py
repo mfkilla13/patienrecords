@@ -1,17 +1,23 @@
-"""Build the Windows program: a portable folder dist/MedQT/ and dist/MedQT-<version>-win.zip.
+"""Build the Windows program: a portable folder dist/MedQT/, dist/MedQT-<version>-win.zip and its .sha256.
 
     .venv\\Scripts\\python build.py
 
-Steps: build the interface (npm), draw the icon, bundle with PyInstaller (one folder,
-no console), run `MedQT.exe --self-test` on the result, zip it. The target laptop needs
-nothing installed: Windows 10/11 already has the WebView2 runtime the window uses.
+Steps: build the interface (npm), draw the icon, bundle the program and the launcher with PyInstaller
+(one folder each, no console), run the program's `--self-test`, zip it. The target laptop needs nothing
+installed: Windows 10/11 already has the WebView2 runtime the window uses.
 
-The folder never contains a database: data/ is created next to MedQT.exe on first start
-and is left alone by updates (copy the new folder over the old one, keep data/).
+    MedQT/MedQT.exe, _internal/        the launcher (the desktop shortcut points here)
+    MedQT/versions/<version>/          the program
+    MedQT/versions/state.json          which version the launcher starts
+
+The same archive is a fresh install and an update (the program installs it itself, from GitHub or a file).
+The folder never contains a database: data/ is created next to the launcher on first start.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import shutil
 import subprocess
 import sys
@@ -21,6 +27,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 BACKEND = ROOT / "backend"
 FRONTEND = ROOT / "frontend"
+LAUNCHER = ROOT / "launcher"
 BUILD = ROOT / "build"
 DIST = ROOT / "dist"
 sys.path.insert(0, str(BACKEND))
@@ -66,26 +73,44 @@ def main() -> None:
     ico = BUILD / "medqt.ico"
     icon(ico)
 
-    step("PyInstaller")
+    step("PyInstaller: программа")
     entry = BUILD / "MedQT.py"
     entry.write_text("from medqt3.desktop import main\nmain()\n", encoding="utf-8")
     sep = ";"
+    parts = BUILD / "parts"
+    shutil.rmtree(parts, ignore_errors=True)
     args = [
         sys.executable, "-m", "PyInstaller", str(entry), "--name", "MedQT", "--noconfirm", "--clean",
         "--windowed", "--onedir", "--icon", str(ico),
-        "--distpath", str(DIST), "--workpath", str(BUILD / "pyinstaller"), "--specpath", str(BUILD),
+        "--distpath", str(parts / "app"), "--workpath", str(BUILD / "pyinstaller"), "--specpath", str(BUILD),
         "--paths", str(BACKEND),
         "--add-data", f"{FRONTEND / 'dist'}{sep}frontend",
         "--add-data", f"{BACKEND / 'medqt3' / 'fonts'}{sep}medqt3/fonts",
         "--add-data", f"{BACKEND / 'medqt3' / 'dictdata'}{sep}medqt3/dictdata",
         "--collect-submodules", "uvicorn",
         "--collect-submodules", "medqt3",
+        "--collect-data", "certifi",
         "--collect-all", "pypdfium2",
         "--collect-all", "pypdfium2_raw",
         "--hidden-import", "win32print", "--hidden-import", "win32ui", "--hidden-import", "win32con",
     ]
     subprocess.run(args, check=True)
-    app = DIST / "MedQT"
+
+    step("PyInstaller: запускатель")
+    subprocess.run([
+        sys.executable, "-m", "PyInstaller", str(LAUNCHER / "launcher.py"), "--name", "MedQT", "--noconfirm", "--clean",
+        "--windowed", "--onedir", "--icon", str(ico),
+        "--distpath", str(parts / "launcher"), "--workpath", str(BUILD / "pyinstaller-launcher"),
+        "--specpath", str(BUILD / "launcher"),
+    ], check=True)
+
+    step("Папка MedQT")
+    out = DIST / "MedQT"
+    shutil.rmtree(out, ignore_errors=True)
+    shutil.copytree(parts / "launcher" / "MedQT", out)
+    app = out / "versions" / __version__
+    shutil.copytree(parts / "app" / "MedQT", app)
+    (out / "versions" / "state.json").write_text(json.dumps({"current": __version__}), encoding="utf-8")
 
     step("Самопроверка собранной программы")
     report = BUILD / "selftest.txt"
@@ -98,16 +123,18 @@ def main() -> None:
     print(text)
     if "ЕСТЬ ОШИБКИ" in text:
         sys.exit("Самопроверка не прошла — сборка не годится.")
-    if (app / "data").exists():
+    if (out / "data").exists() or (app / "data").exists():
         sys.exit("В сборку попала папка data — её быть не должно.")
 
     step("Архив")
     zip_path = DIST / f"MedQT-{__version__}-win.zip"
     zip_path.unlink(missing_ok=True)
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
-        for f in app.rglob("*"):
-            z.write(f, Path("MedQT") / f.relative_to(app))
-    print(f"Готово: {app}\n        {zip_path} ({zip_path.stat().st_size / 1024 / 1024:.0f} МБ)")
+        for f in sorted(out.rglob("*")):
+            z.write(f, Path("MedQT") / f.relative_to(out))
+    digest = hashlib.sha256(zip_path.read_bytes()).hexdigest()
+    Path(str(zip_path) + ".sha256").write_text(f"{digest}  {zip_path.name}\n", encoding="ascii")
+    print(f"Готово: {out}\n        {zip_path} ({zip_path.stat().st_size / 1024 / 1024:.0f} МБ), sha256 {digest[:12]}…")
 
 
 if __name__ == "__main__":

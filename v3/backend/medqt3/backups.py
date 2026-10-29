@@ -23,8 +23,8 @@ from pathlib import Path
 from . import db as store
 
 KIND_LABELS = {"auto": "автоматическая", "manual": "вручную", "before_restore": "перед восстановлением",
-               "before_import": "перед переносом из 2.9"}
-NAME = re.compile(r"^medqt_(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})_(auto|manual|before_restore|before_import)\.db$")
+               "before_import": "перед переносом из 2.9", "before_update": "перед обновлением программы"}
+NAME = re.compile(r"^medqt_(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})_(auto|manual|before_restore|before_import|before_update)\.db$")
 KEEP_DAILY = 14          # newest automatic copies
 KEEP_MONTHS = 12         # plus the last automatic copy of each of these months
 KEEP_BEFORE = 10         # copies made before a restore or an import

@@ -455,6 +455,17 @@ async function send<T>(method: string, path: string, body?: BodyInit, headers?: 
   return res.json() as Promise<T>;
 }
 
+export interface UpdateStatus {
+  current: string;
+  installable: boolean;
+  checkedAt: string | null;
+  error: string | null;
+  latest: { version: string; notes: string; publishedAt: string; size: number; page: string } | null;
+  available: boolean;
+  progress: { phase: string; text: string; done: number; total: number; version?: string } | null;
+  rollback: { version: string; backup: string | null; backupAt: string | null; needsDb: boolean } | null;
+}
+
 export interface CheckItem { item: string; caseId: string; number: string; fio: string; detail: string; link: string }
 export interface CheckGroup { key: string; title: string; hint: string; fix: string; items: CheckItem[] }
 export interface Checks { total: number; confirmed: number; groups: CheckGroup[] }
@@ -567,6 +578,12 @@ export const api = {
   setReportGroup: (caseId: string, group: string) =>
     request<{ ok: true }>("PUT", `/api/cases/${encodeURIComponent(caseId)}/report-group`, { group }),
   checks: () => get<Checks>("/api/checks"),
+  update: () => get<UpdateStatus>("/api/update"),
+  updateCheck: () => request<UpdateStatus>("POST", "/api/update/check"),
+  updateDownload: () => request<UpdateStatus>("POST", "/api/update/download"),
+  updateFile: (f: File) => send<UpdateStatus>("POST", "/api/update/file", f, { "Content-Type": "application/zip" }),
+  updateRollback: (restoreDb: boolean) => request<UpdateStatus>("POST", "/api/update/rollback", { restoreDb }),
+  updateRestart: () => request<{ ok: true }>("POST", "/api/update/restart"),
   confirmCheck: (check: string, item: string) => request<Checks>("POST", "/api/checks/confirm", { check, item }),
   stats: (from: string, to: string) =>
     get<Stats>(`/api/stats?${new URLSearchParams({ date_from: from, date_to: to }).toString()}`),

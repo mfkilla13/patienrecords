@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, DictName, Settings } from "../api";
 import { BackupsSection } from "./BackupsSection";
+import { UpdateSection } from "./UpdateSection";
 import { DictionarySection } from "./DictionarySection";
 import { applyTheme } from "../theme";
 import "./settings.css";
@@ -14,13 +15,13 @@ const DICTIONARIES: [DictName, string][] = [
   ["prescriptions", "Шаблоны назначений"],
   ["addresses", "Адреса"],
 ];
-const SETTINGS = [["print", "Учреждение, подпись, печать"], ["backups", "Резервные копии"]] as const;
+const SETTINGS = [["print", "Учреждение, подпись, печать"], ["backups", "Резервные копии"], ["update", "Обновление программы"]] as const;
 
 export function SettingsPage() {
   const [params, setParams] = useSearchParams();
   const s = params.get("s") ?? "";
   const dict = DICTIONARIES.find(([key]) => key === s)?.[0] ?? null;
-  const section = dict ?? (s === "backups" ? "backups" : "print");
+  const section = dict ?? (s === "backups" || s === "update" ? s : "print");
   const [dictDirty, setDictDirty] = useState(false);
   const onDictDirty = useCallback((d: boolean) => setDictDirty(d), []);
   const open = (key: string) => {
@@ -92,7 +93,7 @@ export function SettingsPage() {
         ))}
       </nav>
 
-      {dict ? <DictionarySection name={dict} onDirty={onDictDirty} /> : section === "backups" ? <BackupsSection /> : (
+      {dict ? <DictionarySection name={dict} onDirty={onDictDirty} /> : section === "backups" ? <BackupsSection /> : section === "update" ? <UpdateSection /> : (
       <section className="card st-card" aria-label="Учреждение, подпись, печать">
         <h2>Учреждение, подпись, печать</h2>
         {!form ? (

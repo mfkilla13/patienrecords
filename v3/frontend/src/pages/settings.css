@@ -57,3 +57,10 @@
 .dc-icon.del:hover { color: var(--danger); }
 .dc-empty { padding: 14px 10px; }
 .st-theme { align-self: flex-start; }
+
+.up-new { background: var(--amber-soft); border-radius: 18px; padding: 14px 18px; display: flex; flex-direction: column; gap: 6px; }
+.up-notes { white-space: pre-wrap; font-size: 14px; }
+.up-progress { display: flex; flex-direction: column; gap: 6px; font-weight: 600; }
+.up-progress.error { color: var(--danger); }
+.up-progress.ready { color: var(--accent-hover); }
+.up-back { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 16px; color: var(--text-2); }

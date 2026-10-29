@@ -4,20 +4,25 @@ from __future__ import annotations
 
 import re
 import sqlite3
+import threading
 from urllib.parse import quote
 from datetime import date
 from pathlib import Path
 
 from html import escape
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import (__version__, admission, archive, backups, checks, clinical, diaries, dicts, discharge, dischargeprint, exams,
-               prescriptions, paths, printjobs, records, report, reportdoc, rxprint, settings, stats, studies)
+               prescriptions, paths, printjobs, records, report, reportdoc, rxprint, settings, stats, studies, updater)
 from . import db as store
+
+class RollbackIn(BaseModel):
+    restoreDb: bool = False
+
 
 class CheckOkIn(BaseModel):
     check: str
@@ -238,12 +243,16 @@ def case_card(conn: sqlite3.Connection, case_id: str, today: date | None = None)
 LEGACY_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:"
 
 
-def create_app(db_path: Path | None = None, auto_backup: bool = False) -> FastAPI:
+def create_app(db_path: Path | None = None, auto_backup: bool = False, updates: updater.Updater | None = None) -> FastAPI:
+    """auto_backup: the desktop program — daily backups and a quiet update check after start."""
     db_path = Path(db_path or store.default_db_path())
     conn = store.connect(db_path)
     app = FastAPI(title="MedQT", version=__version__)
+    app.state.on_quit = None        # set by the desktop window: closes it so the launcher can start another version
+    upd = updates or updater.Updater(conn, db_path)
     if auto_backup:
         backups.start_daily(conn, db_path)
+        upd.check_later()
 
     @app.get("/api/health")
     def health():
@@ -632,6 +641,42 @@ def create_app(db_path: Path | None = None, auto_backup: bool = False) -> FastAP
     @app.post("/api/backups/open-folder")
     def post_open_folder():
         backups.open_folder(db_path)
+        return {"ok": True}
+
+    def _up(fn, *args):
+        try:
+            return fn(*args)
+        except updater.UpdateError as e:
+            raise HTTPException(e.status, e.message)
+
+    @app.get("/api/update")
+    def get_update():
+        return upd.status()
+
+    @app.post("/api/update/check")
+    def post_update_check():
+        upd.check(force=True)
+        return upd.status()
+
+    @app.post("/api/update/download")
+    def post_update_download():
+        return _up(upd.download)
+
+    @app.post("/api/update/file")
+    async def post_update_file(request: Request):
+        return _up(upd.install_file, await request.body())
+
+    @app.post("/api/update/rollback")
+    def post_update_rollback(body: RollbackIn):
+        result = _up(upd.rollback, body.restoreDb)
+        printjobs.forget_cache()
+        return result
+
+    @app.post("/api/update/restart")
+    def post_update_restart():
+        _up(upd.restart)
+        if app.state.on_quit:
+            threading.Timer(0.5, app.state.on_quit).start()
         return {"ok": True}
 
     def _dc(fn, *args):
