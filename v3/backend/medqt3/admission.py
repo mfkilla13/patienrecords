@@ -138,22 +138,27 @@ def admit(conn: sqlite3.Connection, a: AdmissionIn) -> dict:
 
 
 def dictionaries(conn: sqlite3.Connection) -> dict:
-    """Lists for suggestions. Towns and streets also grow from addresses already in the database."""
+    """Lists for suggestions. Towns and streets also grow from addresses already in the database.
+
+    Settlements keep the dictionary's order — the towns (Бендеры, Тирасполь, ...) first, then the
+    villages; the doctor can reorder them in Справочники → Адреса. Ones that are only in the database
+    follow at the end."""
     from .report import CHANNELS, RESIDENCE
     addresses = dicts.get(conn, "addresses")
-    cities = set(addresses["cities"])
-    streets = set(addresses["streets"])
-    for r in conn.execute("SELECT DISTINCT city, street FROM patients"):
-        if r["city"]:
-            cities.add(r["city"])
+    known = {c.casefold() for c in addresses["cities"]}
+    extra_cities, streets = set(), set(addresses["streets"])
+    for r in conn.execute("SELECT DISTINCT city, street FROM patients WHERE deleted_at IS NULL"):
+        if r["city"] and r["city"].casefold() not in known:
+            extra_cities.add(r["city"])
         if r["street"]:
             streets.add(r["street"])
+    cities = addresses["cities"] + sorted(extra_cities, key=str.casefold)
     return {
         "ophthalmic": dicts.get(conn, "ophthalmic"),
         "comorbid": dicts.get(conn, "comorbid"),
         "examinations": dicts.get(conn, "examinations"),
         "treatment": dicts.get(conn, "treatment"),
-        "cities": sorted(cities, key=str.casefold),
+        "cities": cities,
         "streets": sorted(streets, key=str.casefold),
         "nextNumber": next_number(conn),
         "channels": list(CHANNELS),

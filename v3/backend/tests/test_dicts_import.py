@@ -100,3 +100,13 @@ def test_all_settlements_of_pmr_with_villages_marked(setup):
     for village in ("Гиска", "Парканы", "Варница", "Протягайловка", "Чобручи", "Кицканы", "Рашков"):
         assert village in villages, village
     assert "Сёла" in a["groups"]["villages"]
+
+
+def test_towns_come_first_in_admission_suggestions(setup):
+    client, conn, path = setup
+    ts = store.now_iso()
+    with conn:
+        conn.execute("INSERT INTO patients (id, surname, city, created_at, updated_at) VALUES ('px', 'Т', 'Абвгд', ?, ?)", (ts, ts))
+    cities = client.get("/api/dictionaries").json()["cities"]
+    assert cities[:2] == ["Бендеры", "Тирасполь"] and cities[-1] == "Абвгд"
+    assert cities.index("Днестровск") < cities.index("Ближний Хутор") and len(cities) == len(set(cities))
