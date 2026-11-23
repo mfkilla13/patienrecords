@@ -155,6 +155,8 @@ def department(conn: sqlite3.Connection, today: date | None = None) -> dict:
             "day": _day_of_stay(r["admitted_at"], r["discharged_at"], today),
             "stage": _stage(r["status"], bool(r["operated"])),
             "diaryToday": bool(r["diary_today"]),
+            # On the day of admission the primary exam is written, not a diary: nothing is missing yet.
+            "admittedToday": (r["admitted_at"] or "")[:10] == today.isoformat(),
             "unprinted": r["unprinted"],
         })
     patients.sort(key=lambda x: (int(x["number"]) if x["number"].isdigit() else 0, x["number"]))
@@ -183,7 +185,7 @@ def department(conn: sqlite3.Connection, today: date | None = None) -> dict:
         "summary": summary,
         "counts": {
             "all": len(patients),
-            "noDiary": sum(1 for p in patients if not p["diaryToday"] and p["stage"] != "discharged"),
+            "noDiary": sum(1 for p in patients if not p["diaryToday"] and not p["admittedToday"] and p["stage"] != "discharged"),
             "unprinted": sum(1 for p in patients if p["unprinted"]),
             "discharged": sum(1 for p in patients if p["stage"] == "discharged"),
         },
@@ -219,6 +221,7 @@ def case_card(conn: sqlite3.Connection, case_id: str, today: date | None = None)
     if exam:
         planned = next((s["text"].split(", ") for s in exam["sections"] if s["label"] == "План обследования"), [])
     diary_today = any(r["kind"] == "diary" and r["recordedAt"][:10] == today.isoformat() for r in records)
+    admitted_today = (c["admitted_at"] or "")[:10] == today.isoformat()
     dx = c["dx_final"] or c["dx_clinical"] or c["dx_admission"]
 
     steps = [
@@ -232,8 +235,8 @@ def case_card(conn: sqlite3.Connection, case_id: str, today: date | None = None)
          "sub": operations[0]["recordedAt"] if operations else "не было",
          "state": "done" if operations else "todo"},
         {"key": "diaries", "title": "Дневники",
-         "sub": "сегодня написан" if diary_today else "сегодня нет",
-         "state": "done" if c["status"] != "active" else ("done" if diary_today else "now")},
+         "sub": "сегодня написан" if diary_today else "со следующего дня" if admitted_today else "сегодня нет",
+         "state": "done" if c["status"] != "active" or diary_today else ("todo" if admitted_today else "now")},
         {"key": "discharge", "title": "Выписка", "sub": c["discharged_at"] or "—",
          "state": "done" if c["status"] != "active" else "todo"},
     ]

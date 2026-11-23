@@ -173,6 +173,8 @@ def round_rows(conn: sqlite3.Connection, day: str) -> list[dict]:
     ).fetchall()
     rows = []
     for c in cases:
+        if (c["admitted_at"] or "")[:10] == day:      # admitted today: the primary exam, not a diary
+            continue
         op = _operation_date(conn, c["id"])
         if op == day:
             day_label, post_op = "день операции", True

@@ -93,3 +93,23 @@ def test_round_lists_active_cases_with_today_and_previous(client):
     client.post("/api/cases/c1/diaries", json=diary(date="2026-10-28"))
     rows = client.get("/api/round", params={"day": "2026-10-28"}).json()["rows"]
     assert rows[0]["today"]["recordId"]
+
+
+def test_no_diary_is_expected_on_the_day_of_admission(tmp_path):
+    from datetime import date
+    from fastapi.testclient import TestClient
+    from medqt3 import db as store
+    from medqt3.api import create_app
+    path = tmp_path / "t.db"
+    store.connect(path).close()
+    client = TestClient(create_app(path))
+    today = date.today().isoformat()
+    r = client.post("/api/admissions", json={"surname": "Сегодняшняя", "admittedDate": today, "admittedTime": "09:00",
+                                             "dxAdmission": "Незрелая катаракта OD"})
+    cid = r.json()["caseId"]
+    dep = client.get("/api/department").json()
+    row = next(p for p in dep["patients"] if p["caseId"] == cid)
+    assert row["admittedToday"] is True and dep["counts"]["noDiary"] == 0
+    assert all(x["caseId"] != cid for x in client.get("/api/round", params={"day": today}).json()["rows"])
+    step = next(s for s in client.get(f"/api/cases/{cid}").json()["steps"] if s["key"] == "diaries")
+    assert step["state"] == "todo" and step["sub"] == "со следующего дня"

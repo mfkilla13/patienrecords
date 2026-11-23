@@ -13,6 +13,7 @@ export interface DepartmentPatient {
   day: number | null;
   stage: Stage;
   diaryToday: boolean;
+  admittedToday: boolean;   // the primary exam today, no diary expected
   unprinted: number;
 }
 

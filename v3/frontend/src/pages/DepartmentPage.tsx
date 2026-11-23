@@ -60,7 +60,7 @@ function Summary({ s, today }: { s: Department["summary"]; today: string }) {
 }
 
 function matches(p: DepartmentPatient, filter: Filter, query: string): boolean {
-  if (filter === "noDiary" && (p.diaryToday || p.stage === "discharged")) return false;
+  if (filter === "noDiary" && (p.diaryToday || p.admittedToday || p.stage === "discharged")) return false;
   if (filter === "unprinted" && !p.unprinted) return false;
   if (filter === "discharged" && p.stage !== "discharged") return false;
   if (!query) return true;
@@ -216,6 +216,8 @@ export function DepartmentPage() {
                       <span className="dep-done">
                         <span className="dep-check" aria-hidden="true">✓</span>Написан
                       </span>
+                    ) : p.admittedToday ? (
+                      <span className="muted" title="В день поступления пишется первичный осмотр">день поступления</span>
                     ) : (
                       <Link to={`/case/${p.caseId}/diary`} className="btn primary small" onClick={(e) => e.stopPropagation()}>
                         Написать
