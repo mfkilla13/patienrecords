@@ -252,6 +252,9 @@ export interface ExamDraft {
     objective: Record<string, string[]>;
     allergy: string[];
     insurance: string[];
+    insuranceStatuses: string[];
+    insuranceNoCitizen: string;
+    disability: string[];
     diagTypes: string[];
     complaintWords: string[];
     treatmentLabels: Record<string, string>;
@@ -426,7 +429,7 @@ export interface DeptReport {
   periods: { key: string; label: string; from: string; to: string }[];
 }
 
-export type DictName = "ophthalmic" | "comorbid" | "examinations" | "treatment" | "prescriptions" | "addresses";
+export type DictName = "ophthalmic" | "comorbid" | "examinations" | "treatment" | "prescriptions" | "addresses" | "complaints";
 export type DictValue = string[] | Record<string, string[]>;
 export interface DictInfo {
   name: DictName;

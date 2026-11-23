@@ -22,8 +22,9 @@ FILES = {
     "examinations": ("examinations.json", "Обследования"),
     "treatment": ("treatment_basis.json", "Обоснование лечения"),
     "addresses": ("addresses.json", "Адреса"),
+    "complaints": ("complaint_phrases.json", "Фразы жалоб"),
 }
-LISTS = ("ophthalmic", "comorbid", "examinations")
+LISTS = ("ophthalmic", "comorbid", "examinations", "complaints")
 ADDRESS_GROUPS = {"cities": "Населённые пункты", "streets": "Улицы", "villages": "Сёла — для отчёта"}
 # addresses.json has every settlement of Приднестровье (the state register, as listed on Wikipedia in 2026)
 # under "cities", and its villages under "villages": patients from those count as «сельские жители» in the
@@ -33,6 +34,7 @@ HINTS = {
     "comorbid": "Подсказки сопутствующих диагнозов.",
     "examinations": "План обследования в первичном осмотре; по нему строится список «ещё не внесены» в исследованиях.",
     "treatment": "Препараты по группам для «Обоснования лечения» в первичном осмотре и дневниках.",
+    "complaints": "Кнопки под «Жалобами» в первичном осмотре: нажатие дописывает фразу. Свои добавляются кнопкой «+» там же.",
     "addresses": "Подсказки при поступлении (пункты и улицы из базы подсказываются и так). «Сёла» — кого считать сельскими жителями в отчёте отделения.",
 }
 MAX_ITEMS = 2000

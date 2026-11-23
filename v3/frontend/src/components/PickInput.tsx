@@ -8,11 +8,11 @@ const range = (from: number, to: number, step: number, fmt: (v: number) => strin
 const comma = (v: number, digits: number) => v.toFixed(digits).replace(".", ",");
 
 // Vis on the Sivtsev chart: 0,1–1,0 is the chart itself, 0,01–0,09 low vision (Pole's formula), 1,5 and 2,0 the top
-// lines. Below 0,01 (count fingers, hand motion, light perception) is chosen in «Статус», not here.
+// lines, and 0. Count fingers, hand motion, light perception are chosen in «Статус».
 const VIS_ROWS = [
   range(0.1, 1.0, 0.1, (v) => comma(v, 1)),
   range(0.01, 0.09, 0.01, (v) => comma(v, 2)),
-  ["1,5", "2,0"],
+  ["0", "1,5", "2,0"],
 ];
 // Spherical correction, dioptres.
 const CORR_ROWS = [
@@ -56,7 +56,7 @@ const SECTIONS: Record<PickKind, Section[]> = {
 };
 const BP_HINT = "от 140/90 — повышенное, от 180/110 — очень высокое";
 const HINT: Record<PickKind, string> = {
-  vis: "ниже 0,01 — в «Статусе»",
+  vis: "счёт пальцев, движение руки, светоощущение — в «Статусе»",
   corr: "сильнее ±6,0 — впишите сами",
   vgd: `норма ${VGD_NORM.low}–${VGD_NORM.high} мм рт. ст.`,
   bp: "сначала верхнее, потом нижнее; " + BP_HINT,

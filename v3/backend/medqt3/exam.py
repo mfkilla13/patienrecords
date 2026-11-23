@@ -85,6 +85,11 @@ OBJECTIVE: dict[str, list[str]] = {
 ALLERGY = ["не отягощен", "отмечается аллергия на"]
 INSURANCE = ["Гражданин ПМР (пенсионер, работает)", "Гражданин ПМР (пенсионер, не работает)",
              "Гражданин ПМР (не работает)", "Гражданин ПМР (работает)", "Гражданства ПМР не имеет (платная основа)"]
+# The insurance line is put together from these in the exam form: «Гражданин ПМР (пенсионер, не работает,
+# инв. II гр. по зрению)». Without a disability the text is exactly 2.9's.
+INSURANCE_STATUSES = ["пенсионер, не работает", "пенсионер, работает", "работает", "не работает", "студент"]
+INSURANCE_NO_CITIZEN = "Гражданства ПМР не имеет (платная основа)"
+DISABILITY = ["I", "II", "III", "детства"]
 DIAG_TYPES = ["клинический", "предварительный"]
 COMPLAINT_WORDS = ["на", "боли", "в", "обоих глазах", "правом глазу", "левом глазу", "снижение зрения", ",",
                    "OU", "OD", "OS", "отсутствие зрения", "искажение изображения", "зрительный дискомфорт"]
@@ -263,6 +268,11 @@ _FRAC = """<td style="text-align:center; padding:0 5px; vertical-align:middle;">
 <tr><td style="text-align:center; border-bottom:1px solid black;">{top}</td></tr>
 <tr><td style="text-align:center;">{bottom}</td></tr></table></td>"""
 _CELL = '<td style="text-align:center; padding:0 5px; vertical-align:middle;">{}</td>'
+# Two lines at the levels of the fraction's halves, without the bar: the notes beside the Vis fraction.
+_ROWS = """<td style="text-align:left; padding:0 5px; vertical-align:middle;">
+<table border="0" cellpadding="2" cellspacing="0">
+<tr><td style="text-align:left;">{top}</td></tr>
+<tr><td style="text-align:left;">{bottom}</td></tr></table></td>"""
 
 _STYLE = """<style>
 body{ margin:0; font-family: "Segoe UI", Arial, sans-serif; font-size: 9.5pt; line-height: 1.05; }
@@ -280,10 +290,10 @@ def _diopters(v: str) -> str:
     return _e(v) if v.endswith(("D", "d", "дптр", "Дптр")) else f"{_e(v)} D"
 
 
-def _eye_vision(d: dict, e: str) -> str:
-    """«0,8 с коррекцией −1,5 D = 1,0», «0,1 n.k.», «счет пальцев у лица»."""
-    vis, st = (d[f"vis_{e}"] or "").strip(), d[f"vis_correction_{e}"] or "пусто"
-    parts = [_e(vis)] if vis else []
+def _eye_note(d: dict, e: str) -> str:
+    """What stands beside the Vis fraction for one eye: «с коррекцией −1,5 D = 1,0», «n.k.», «счет пальцев у лица»."""
+    st = d[f"vis_correction_{e}"] or "пусто"
+    parts = []
     if st == "с коррекцией":
         corr, res = _diopters(d[f"vis_{e}_corr"]), (d[f"vis_{e}_result"] or "").strip()
         parts.append("с коррекцией" + (f" {corr}" if corr else "") + (f" = {_e(res)}" if res else ""))
@@ -291,7 +301,7 @@ def _eye_vision(d: dict, e: str) -> str:
         parts.append("n.k.")
     elif st != "пусто":
         parts.append(_e(st))
-    return " ".join(parts) or "—"
+    return " ".join(parts)
 
 
 def render_html(raw: dict, signature: str = "") -> str:
@@ -316,22 +326,17 @@ def render_html(raw: dict, signature: str = "") -> str:
     out.append("<b>Офтальмологический осмотр:</b><br>")
     vis_od, vis_os = (d["vis_od"] or "").strip(), (d["vis_os"] or "").strip()
     vgd_od, vgd_os = (d["vgd_od"] or "").strip(), (d["vgd_os"] or "").strip()
-    status = {e: d[f"vis_correction_{e}"] or "пусто" for e in ("od", "os")}
-    plain = all(status[e] == "пусто" for e in ("od", "os"))
-    if (vis_od or vis_os) and not plain:
-        # A correction or a status on either eye: one line per eye, the way it is written by hand —
-        # a fraction with blank halves under «с коррекцией» reads as nonsense.
-        out.append('<table border="0" cellpadding="0" cellspacing="0">')
-        for i, e in enumerate(("od", "os")):
-            out.append(f'<tr>{_CELL.format("<b>Vis</b>" if i == 0 else "")}{_CELL.format(e.upper() + " =")}'
-                       f'<td style="text-align:left; padding:0 5px; vertical-align:middle;">{_eye_vision(d, e)}</td></tr>')
-        out.append("</table>")
     if vis_od or vis_os or vgd_od or vgd_os:
         out.append('<table border="0" cellpadding="0" cellspacing="0"><tr>')
-        if (vis_od or vis_os) and plain:
-            out.append("".join([_CELL.format("<b>Vis</b>"), _FRAC.format(top="OD", bottom="OS"), _CELL.format("="),
-                                _FRAC.format(top=_e(vis_od) or "—", bottom=_e(vis_os) or "—"),
-                                '<td style="padding:0 20px;"></td>']))
+        if vis_od or vis_os:
+            # Always the OD/OS fraction; a status or a correction stands beside it at its eye's level, with no
+            # bar under it (a fraction with blank halves under «с коррекцией» reads as nonsense).
+            notes = {e: _eye_note(d, e) for e in ("od", "os")}
+            row = [_CELL.format("<b>Vis</b>"), _FRAC.format(top="OD", bottom="OS"), _CELL.format("="),
+                   _FRAC.format(top=_e(vis_od) or "—", bottom=_e(vis_os) or "—")]
+            if notes["od"] or notes["os"]:
+                row.append(_ROWS.format(top=notes["od"] or "&nbsp;", bottom=notes["os"] or "&nbsp;"))
+            out.append("".join(row + ['<td style="padding:0 20px;"></td>']))
         if vgd_od or vgd_os:
             out.append("".join([_CELL.format("<b>ВГД</b>"), _FRAC.format(top="OD", bottom="OS"), _CELL.format("="),
                                 _FRAC.format(top=_e(vgd_od) or "—", bottom=_e(vgd_os) or "—"),

@@ -10,7 +10,7 @@ from datetime import date
 from pydantic import BaseModel, Field
 
 from . import db as store
-from . import exam, settings
+from . import dicts, exam, settings
 from .clinical import TREATMENT_LABELS
 from .importer import to_date
 
@@ -118,8 +118,9 @@ def draft(conn: sqlite3.Connection, case_id: str) -> dict:
         "options": {
             "local": exam.LOCAL_OPTIONS, "anterior": exam.ANTERIOR_OPTIONS, "anteriorRow": exam.ANTERIOR,
             "norms": exam.NORMS, "anteriorNorm": exam.ANTERIOR_NORM, "objective": exam.OBJECTIVE,
-            "allergy": exam.ALLERGY, "insurance": exam.INSURANCE, "diagTypes": exam.DIAG_TYPES,
-            "complaintWords": exam.COMPLAINT_WORDS, "treatmentLabels": TREATMENT_LABELS,
+            "allergy": exam.ALLERGY, "insurance": exam.INSURANCE, "insuranceStatuses": exam.INSURANCE_STATUSES,
+            "insuranceNoCitizen": exam.INSURANCE_NO_CITIZEN, "disability": exam.DISABILITY, "diagTypes": exam.DIAG_TYPES,
+            "complaintWords": dicts.get(conn, "complaints"), "treatmentLabels": TREATMENT_LABELS,
         },
         "base": exam.normal_exam(),
     }

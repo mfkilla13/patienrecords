@@ -133,7 +133,7 @@ export function CaseEditPage() {
                 </select>
               </label>
             </div>
-            <label className="lbl">Диагноз при поступлении *{input("dxAdmission", { list: "ce-dx", maxLength: 500 })}</label>
+            <label className="lbl">Диагноз при поступлении{input("dxAdmission", { list: "ce-dx", maxLength: 500 })}</label>
             <label className="lbl">Клинический диагноз{input("dxClinical", { list: "ce-dx", maxLength: 500 })}</label>
             <label className="lbl">Сопутствующие{input("dxComorbid", { list: "ce-comorbid", maxLength: 500 })}</label>
             <span className="st-help">

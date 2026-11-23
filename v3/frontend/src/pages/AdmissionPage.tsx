@@ -67,7 +67,6 @@ export function AdmissionPage() {
   const submit = async () => {
     setError(null);
     if (!form.patientId && !form.surname.trim()) return setError("Укажите фамилию");
-    if (!form.dxAdmission.trim()) return setError("Укажите диагноз при поступлении");
     const dob = locked ? null : dobProblem(form.dob);
     if (dob?.block) return setError(dob.text);
     if (dob && !window.confirm(`${dob.text}. Всё верно, сохранить так?`)) return;
@@ -192,7 +191,7 @@ export function AdmissionPage() {
               </select>
               <span className="ad-note">Для отчёта отделения: экстренно или планово, кем направлен.</span>
             </label>
-            <div className="lbl">Диагноз при поступлении *
+            <div className="lbl">Диагноз при поступлении
               <span className="ad-row">
                 <span className="seg ad-eye" role="radiogroup" aria-label="Глаз">
                   {(["OD", "OS", "OU"] as Eye[]).map((e) => (

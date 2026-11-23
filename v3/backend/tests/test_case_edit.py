@@ -63,12 +63,13 @@ def test_delete_a_case_made_by_mistake(tmp_path):
     assert any(b["kind"] == "before_delete" for b in client.get("/api/backups").json()["items"])
 
 
-def test_vis_with_correction_on_one_eye_is_written_per_eye():
+def test_vis_stays_a_fraction_with_the_correction_beside_it():
     from medqt3 import exam
     d = exam.normal_exam()
     d.update(vis_od="0,8", vis_os="0,9", vis_correction_od="с коррекцией", vis_od_corr="-1,5", vis_od_result="1,0",
              vis_correction_os="пусто", vgd_od="25", vgd_os="23")
     h = exam.render_html(d)
-    assert "0,8 с коррекцией -1,5 D = 1,0" in h and "OS =" in h and ">0,9<" in h and "ВГД" in h
+    # always the OD/OS fraction (as with «пусто»), the correction beside it at the OD level
+    assert ">0,8<" in h and ">0,9<" in h and "с коррекцией -1,5 D = 1,0" in h and "ВГД" in h and "OD =" not in h
     d.update(vis_correction_od="пусто")
-    assert "OD =" not in exam.render_html(d)          # no correction: the usual OD/OS fraction
+    assert "с коррекцией" not in exam.render_html(d)

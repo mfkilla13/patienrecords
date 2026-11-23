@@ -4,6 +4,7 @@ import { api, Dictionaries, ExamData, ExamDraft } from "../api";
 import { stateTone, VIS_STATUSES, WITH_CORRECTION } from "../diary";
 import { fullDate, shortDate, todayIso } from "../format";
 import { MultiChips } from "../components/MultiChips";
+import { InsurancePicker } from "../components/InsurancePicker";
 import { PickInput } from "../components/PickInput";
 import "./exam.css";
 
@@ -72,7 +73,10 @@ export function ExamPage() {
   const [source, setSource] = useState<string>("");
   const [readOnly, setReadOnly] = useState<string | null>(null);
   const [editingRow, setEditingRow] = useState<string | null>(null);
-  const [showAll, setShowAll] = useState(false);
+  const [showAll, setShowAll] = useState(true);
+  const [phrases, setPhrases] = useState<string[] | null>(null);       // complaint phrases after «+» added one
+  const [phraseDraft, setPhraseDraft] = useState<string | null>(null);  // the «+» field while it is open
+  const complaintsRef = useRef<HTMLTextAreaElement>(null);
   const [open, setOpen] = useState<Section | null>(null);
   const [preview, setPreview] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
@@ -122,6 +126,21 @@ export function ExamPage() {
       return opts ? fundusRule(d, opts.norms) : d;
     });
   const setField = (k: string, v: unknown) => edit((d) => { d[k] = v; });
+
+  /** «+» under the complaints, as in the local status: a phrase of her own becomes a button and is kept. */
+  const addPhrase = async (current: string[]) => {
+    const text = (phraseDraft ?? "").trim();
+    setPhraseDraft(null);
+    if (!text) return;
+    const list = phrases ?? current;
+    if (list.some((x) => x.toLowerCase() === text.toLowerCase())) return;
+    try {
+      const saved = await api.saveDictionary("complaints", [...list, text]);
+      setPhrases(saved.value as string[]);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
 
   const useTemplate = (id: string, part: ExamData, label: string) => {
     if (!form || !opts) return;
@@ -410,13 +429,29 @@ export function ExamPage() {
                         {key === "anamnesis" && (
                           <>
                             <label className="lbl">Жалобы
-                              <textarea className="ta" rows={2} value={f.complaints} disabled={Boolean(readOnly)} onChange={(e) => setField("complaints", e.target.value)} />
+                              <textarea ref={complaintsRef} className="ta" rows={2} value={f.complaints} disabled={Boolean(readOnly)} onChange={(e) => setField("complaints", e.target.value)} />
                             </label>
                             {!readOnly && (
                               <span className="ex-chips">
-                                {opts.complaintWords.map((w) => (
+                                {(phrases ?? opts.complaintWords).map((w) => (
                                   <button key={w} type="button" className="chip" onClick={() => setField("complaints", `${(f.complaints ?? "").trimEnd()} ${w}`.trim())}>{w}</button>
                                 ))}
+                                {phraseDraft !== null ? (
+                                  <input className="in ex-add" autoFocus placeholder="своя фраза, Enter — добавить" value={phraseDraft}
+                                    onChange={(e) => setPhraseDraft(e.target.value)} onBlur={() => addPhrase(opts.complaintWords)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") { e.preventDefault(); addPhrase(opts.complaintWords); }
+                                      if (e.key === "Escape") setPhraseDraft(null);
+                                    }} />
+                                ) : (
+                                  <button type="button" className="chip ex-plus" aria-label="Добавить свою фразу" title="Добавить свою фразу"
+                                    onClick={() => {
+                                      const ta = complaintsRef.current;       // a selected bit of the complaints is offered first
+                                      setPhraseDraft(ta ? ta.value.slice(ta.selectionStart, ta.selectionEnd).trim() : "");
+                                    }}>
+                                    <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M7 2v10M2 7h10" /></svg>
+                                  </button>
+                                )}
                               </span>
                             )}
                             <label className="lbl">История настоящего заболевания
@@ -432,11 +467,10 @@ export function ExamPage() {
                               {f.allergy_combo !== opts.allergy[0] && (
                                 <label className="lbl">Аллергены <input className="in" value={f.allergy_text} disabled={Boolean(readOnly)} onChange={(e) => setField("allergy_text", e.target.value)} /></label>
                               )}
-                              <label className="lbl">Страховой анамнез
-                                <select className="in" value={f.insurance} disabled={Boolean(readOnly)} onChange={(e) => setField("insurance", e.target.value)}>
-                                  {[...new Set([...opts.insurance, f.insurance])].map((o) => <option key={o}>{o}</option>)}
-                                </select>
-                              </label>
+                              <div className="lbl">Страховой анамнез
+                                <InsurancePicker value={f.insurance} onChange={(v) => setField("insurance", v)} disabled={Boolean(readOnly)}
+                                  statuses={opts.insuranceStatuses} noCitizen={opts.insuranceNoCitizen} disability={opts.disability} />
+                              </div>
                             </div>
                           </>
                         )}

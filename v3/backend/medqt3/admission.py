@@ -34,7 +34,7 @@ class AdmissionIn(BaseModel):
     medCard: str = Field("", max_length=6)
     admittedDate: str
     admittedTime: str = ""
-    dxAdmission: str = Field(..., max_length=500)
+    dxAdmission: str = Field("", max_length=500)       # optional: often only known after the exam
     dxClinical: str = Field("", max_length=500)
     dxComorbid: str = Field("", max_length=500)
     channel: str = Field("", max_length=80)           # how the patient came — for the department report
@@ -100,8 +100,6 @@ def search(conn: sqlite3.Connection, query: str, limit: int = 8) -> list[dict]:
 
 
 def admit(conn: sqlite3.Connection, a: AdmissionIn) -> dict:
-    if not a.dxAdmission:
-        raise AdmissionError(422, "Укажите диагноз при поступлении")
     from .report import CHANNELS, RESIDENCE
     if a.channel and a.channel not in CHANNELS:
         raise AdmissionError(422, "Нет такого способа госпитализации")
@@ -180,8 +178,6 @@ def save_edit(conn: sqlite3.Connection, case_id: str, a: AdmissionIn) -> dict:
     today = date.today().isoformat()
     if not a.surname:
         raise AdmissionError(422, "Фамилия обязательна")
-    if not a.dxAdmission:
-        raise AdmissionError(422, "Укажите диагноз при поступлении")
     if a.admittedDate > today:
         raise AdmissionError(422, "Дата поступления не может быть позже сегодняшней")
     if a.dob and (a.dob > today or a.dob > a.admittedDate):

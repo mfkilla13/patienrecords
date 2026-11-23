@@ -12,6 +12,7 @@ const DICTIONARIES: [DictName, string][] = [
   ["comorbid", "Сопутствующие диагнозы"],
   ["treatment", "Обоснование лечения"],
   ["examinations", "Обследования"],
+  ["complaints", "Фразы жалоб"],
   ["prescriptions", "Шаблоны назначений"],
   ["addresses", "Адреса"],
 ];

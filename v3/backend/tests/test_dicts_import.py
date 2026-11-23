@@ -110,3 +110,18 @@ def test_towns_come_first_in_admission_suggestions(setup):
     cities = client.get("/api/dictionaries").json()["cities"]
     assert cities[:2] == ["Бендеры", "Тирасполь"] and cities[-1] == "Абвгд"
     assert cities.index("Днестровск") < cities.index("Ближний Хутор") and len(cities) == len(set(cities))
+
+
+def test_complaint_phrases_are_a_dictionary_the_exam_offers(tmp_path):
+    from fastapi.testclient import TestClient
+    from medqt3 import db as store, demo
+    from medqt3.api import create_app
+    path = tmp_path / "t.db"
+    conn = store.connect(path)
+    cid = demo.create(conn)
+    client = TestClient(create_app(path))
+    words = client.get(f"/api/cases/{cid}/exam-draft").json()["options"]["complaintWords"]
+    assert "снижение зрения" in words
+    r = client.put("/api/dictionaries/complaints", json={"value": words + ["слезотечение", "Слезотечение"]})
+    assert r.status_code == 200 and r.json()["value"].count("слезотечение") == 1
+    assert client.get(f"/api/cases/{cid}/exam-draft").json()["options"]["complaintWords"][-1] == "слезотечение"

@@ -127,10 +127,12 @@ def test_recommendations_from_the_last_diary_go_into_the_discharge(tmp_path):
     conn = store.connect(path)
     cid = demo.create(conn)
     client = TestClient(create_app(path))
-    draft = client.get(f"/api/cases/{cid}/diary-draft", params={"day": "2026-10-29"}).json()
-    data = {**draft["previous"]["data"], "date": "2026-10-29", "discharge_note": "выписывается",
+    from datetime import date
+    today = date.today().isoformat()          # the demo patient's diaries are dated back from today
+    draft = client.get(f"/api/cases/{cid}/diary-draft", params={"day": today}).json()
+    data = {**draft["previous"]["data"], "date": today, "discharge_note": "выписывается",
             "recommendations": "Тобрекс 1 кап. 4 р/д 7 дней"}
     assert client.post(f"/api/cases/{cid}/diaries", json=data).status_code in (200, 201)
     d = client.get(f"/api/cases/{cid}/discharge").json()
     assert d["form"]["recommendations"] == "Тобрекс 1 кап. 4 р/д 7 дней" and d["form"]["epicrisis"] == ""
-    assert d["sources"]["diaryRecommendations"]["date"] == "2026-10-29"
+    assert d["sources"]["diaryRecommendations"]["date"] == today

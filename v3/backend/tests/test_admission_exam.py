@@ -65,7 +65,7 @@ def test_readmission_reuses_patient_and_refuses_a_second_active_case(client):
 
 def test_admission_validation(client):
     assert admit(client, surname="").status_code == 422
-    assert admit(client, dxAdmission="").status_code == 422
+    assert admit(client, dxAdmission="").status_code == 201          # the diagnosis can come later
     assert admit(client, medCard="12a").status_code == 422
     assert admit(client, admittedTime="9:5").status_code == 422
 

@@ -58,3 +58,6 @@
 .ex-hint { font-size: 13px; color: var(--muted); }
 
 .ex-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; position: sticky; bottom: 12px; background: var(--surface); border-radius: 999px; padding: 10px 12px 10px 22px; box-shadow: 0 10px 30px rgba(var(--shadow-rgb), 0.18); }
+.ex-insurance { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-weight: 400; }
+.ex-insurance select { flex: 1 1 200px; }
+.ex-insurance-text { flex-basis: 100%; font-size: 13px; }
