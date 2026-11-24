@@ -7,6 +7,7 @@ import {
 import { fullDate, shortDate, todayIso } from "../format";
 import { PickInput, PickKind } from "../components/PickInput";
 import "./diary.css";
+import "./print.css";
 
 type Field = keyof Omit<DiaryData, "basis">;
 
@@ -56,6 +57,13 @@ export function DiaryPage() {
 
   // «Так будет на бумаге»: the print code draws the diary being written, so the preview and the paper match.
   const [paper, setPaper] = useState<string | null>(null);
+  const [zoomed, setZoomed] = useState(false);
+  useEffect(() => {
+    if (!zoomed) return;
+    const close = (e: KeyboardEvent) => { if (e.key === "Escape") setZoomed(false); };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [zoomed]);
   useEffect(() => {
     let url: string | null = null;
     let gone = false;
@@ -285,9 +293,17 @@ export function DiaryPage() {
           <b>Так будет на бумаге</b>
           <div className="dy-paper-wrap">
             {paper
-              ? <img className="dy-paper-img" src={paper} alt="Дневник так, как он будет напечатан" />
+              ? <img className="dy-paper-img" src={paper} alt="Дневник так, как он будет напечатан" title="Нажмите, чтобы рассмотреть крупно"
+                  onClick={() => setZoomed(true)} />
               : <span className="muted">Рисуем…</span>}
           </div>
+          {paper && <span className="muted pr-zoom-hint">Нажмите на лист, чтобы рассмотреть крупно</span>}
+          {zoomed && paper && (
+            <div className="pr-lightbox" role="dialog" aria-label="Дневник крупно" onClick={() => setZoomed(false)}>
+              <div className="pr-lightbox-sheet"><img src={paper} alt="Дневник крупно" /></div>
+              <span className="pr-lightbox-hint">Нажмите в любом месте или Esc, чтобы закрыть</span>
+            </div>
+          )}
           <span className="muted" style={{ fontSize: 14 }}>После сохранения запись попадёт в «Печать новых».</span>
         </aside>
       </div>
