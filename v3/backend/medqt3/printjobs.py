@@ -85,8 +85,20 @@ def _positions(conn: sqlite3.Connection, case_id: str) -> dict[str, dict]:
     return {r["record_id"]: dict(r) for r in rows}
 
 
+def _is_preop(r) -> bool:
+    """«Предоперационный эпикриз»: a plain record, but on the day of surgery it goes before the protocol."""
+    if r["kind"] != "other" or not r["data_json"]:
+        return False
+    try:
+        title = json.loads(r["data_json"]).get("title") or ""
+    except (ValueError, AttributeError):
+        return False
+    return title.strip().lower().startswith("предоперац")
+
+
 def _sort_key(r) -> tuple:
-    return (r["recorded_at"][:10], KIND_ORDER.get(r["kind"], 9), r["recorded_at"])
+    rank = 1.5 if _is_preop(r) else KIND_ORDER.get(r["kind"], 9)
+    return (r["recorded_at"][:10], rank, r["recorded_at"])
 
 
 def _case_records(conn: sqlite3.Connection, case_id: str) -> list[sqlite3.Row]:

@@ -335,3 +335,17 @@ def test_diary_prints_in_two_columns_without_the_time():
     ad = page.search("АД 130").get_next()
     state = page.search("Общее состояние").get_next()
     assert ad and state and page.get_charbox(ad[0])[0] < page.get_charbox(state[0])[0]
+
+
+def test_operation_protocol_prints_below_the_preop_epicrisis_of_that_day():
+    import json
+    def rec(kind, at, title=None):
+        return {"kind": kind, "recorded_at": at, "data_json": json.dumps({"title": title}) if title else None}
+    rows = [rec("operation_protocol", "2026-10-22T10:00"),
+            rec("other", "2026-10-22T12:00", "Предоперационный эпикриз"),
+            rec("other", "2026-10-22T08:00", "Консилиум"),
+            rec("diary", "2026-10-22T09:00")]
+    order = [(r["kind"], json.loads(r["data_json"])["title"] if r["data_json"] else "")
+             for r in sorted(rows, key=printjobs._sort_key)]
+    assert order == [("diary", ""), ("other", "Предоперационный эпикриз"), ("operation_protocol", ""),
+                     ("other", "Консилиум")]
