@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, CaseCard, DiaryData, DiaryDraft } from "../api";
-import { VisionFractions } from "../components/VisionFractions";
 import {
-  basisLines, COPIED_FIELDS, copyFrom, emptyDiary, GENERAL_STATES, hasMeasurements, stateTone, toVision,
+  basisLines, COPIED_FIELDS, copyFrom, emptyDiary, GENERAL_STATES, hasMeasurements, stateTone,
   TREATMENT_PRESETS, VIS_STATUSES, WITH_CORRECTION, fillYesterday, MEASUREMENTS, Measurement, stillYesterday, yesterdayQuestion } from "../diary";
 import { fullDate, shortDate, todayIso } from "../format";
 import { PickInput, PickKind } from "../components/PickInput";
@@ -12,7 +11,6 @@ import "./diary.css";
 type Field = keyof Omit<DiaryData, "basis">;
 
 /** Ends the text with a period unless it already has punctuation. */
-const sentence = (s: string) => (/[.!?]$/.test(s.trim()) ? s.trim() : `${s.trim()}.`);
 
 export function DiaryPage() {
   const { caseId = "", recordId } = useParams();
@@ -56,6 +54,21 @@ export function DiaryPage() {
 
   const set = (k: Field, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
+  // «Так будет на бумаге»: the print code draws the diary being written, so the preview and the paper match.
+  const [paper, setPaper] = useState<string | null>(null);
+  useEffect(() => {
+    let url: string | null = null;
+    let gone = false;
+    const t = window.setTimeout(() => {
+      api.diaryPreview(form).then((u) => {
+        if (gone) { URL.revokeObjectURL(u); return; }
+        url = u;
+        setPaper((old) => { if (old) URL.revokeObjectURL(old); return u; });
+      }, () => undefined);
+    }, 350);
+    return () => { gone = true; window.clearTimeout(t); void url; };
+  }, [form]);
+
   const setStatus = (eye: "od" | "os", v: string) =>
     setForm((f) => ({
       ...f,
@@ -85,7 +98,6 @@ export function DiaryPage() {
   const asis = (k: Field) => asYesterday.includes(k as Measurement);
   // Previous values are shown as grey placeholders; narrow Vis/ВГД fields get the bare value.
   const hint = (k: Field) => (prev && prev[k] ? (k.startsWith("vis_") || k.startsWith("vgd_") ? prev[k] : `вчера ${prev[k]}`) : "");
-  const vision = useMemo(() => toVision(form), [form]);
   const basis = basisLines(form.basis);
   const active = card?.status === "active";
   const readOnly = Boolean(locked) || (card !== null && !active);
@@ -272,26 +284,9 @@ export function DiaryPage() {
         <aside className="card dy-preview" aria-label="Предпросмотр">
           <b>Так будет на бумаге</b>
           <div className="dy-paper-wrap">
-            <div className="dy-paper">
-              <div>
-                <b>{fullDate(form.date)}</b>
-                {form.bp && <div>АД {form.bp} мм рт. ст.</div>}
-                {form.hr && <div>ЧСС {form.hr} уд/мин</div>}
-                {form.pulse && <div>Пульс {form.pulse} уд/мин</div>}
-              </div>
-              <div>
-                {sentence(`Общее состояние ${form.general_state}`)}
-                {form.complaints && ` ${sentence(`Жалобы ${form.complaints}`)}`}
-                {vision && <div className="dy-paper-vis"><VisionFractions v={vision} /></div>}
-                {form.od_text && <div>OD: {form.od_text}</div>}
-                {form.os_text && <div>OS: {form.os_text}</div>}
-                {form.ou_text && <div>OU: {form.ou_text}</div>}
-                {(form.treatment || basis.length > 0) && <div>Лечение {[form.treatment, ...basis].filter(Boolean).join(" ")}</div>}
-                {form.discharge_note && <div>{form.discharge_note}</div>}
-                {form.recommendations && <div>Рекомендации: {form.recommendations}</div>}
-                <div className="dy-sign">Подпись ________</div>
-              </div>
-            </div>
+            {paper
+              ? <img className="dy-paper-img" src={paper} alt="Дневник так, как он будет напечатан" />
+              : <span className="muted">Рисуем…</span>}
           </div>
           <span className="muted" style={{ fontSize: 14 }}>После сохранения запись попадёт в «Печать новых».</span>
         </aside>

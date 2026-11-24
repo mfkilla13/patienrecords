@@ -282,36 +282,50 @@ def _label(name: str, text: str) -> Paragraph:
 
 # ---------- records ----------
 
+DIARY_LEFT = 40 * mm
+
+
+def _sentence(text: str) -> str:
+    t = text.strip()
+    return t if t[-1:] in ".!?" else f"{t}."
+
+
 def diary_block(data: dict, recorded_at: str, doctor: str) -> list:
-    out: list = [RecordHead(_record_date(data, recorded_at), "Дневник", _record_time(data, recorded_at))]
-    vitals = []
-    if (data.get("bp") or "").strip():
-        vitals.append(f"АД {_esc(data['bp'])} мм рт. ст.")
-    if (data.get("hr") or "").strip():
-        vitals.append(f"ЧСС {_esc(data['hr'])}")
-    if (data.get("pulse") or "").strip():
-        vitals.append(f"пульс {_esc(data['pulse'])} уд/мин")
-    if (data.get("general_state") or "").strip():
-        vitals.append(f"состояние {_esc(data['general_state'])}")
-    if vitals:
-        out.append(_p("&nbsp;&nbsp;·&nbsp;&nbsp;".join(vitals)))
-    if (data.get("complaints") or "").strip():
-        out.append(_label("Жалобы", data["complaints"]))
+    """Two columns, as the doctor writes a diary: the date, АД, ЧСС and pulse on the left; the state, complaints,
+    Vis and ВГД (one under the other), the eyes and the treatment on the right. The time is kept as service data
+    only and is not printed."""
+    left: list = [_p(f"<font name='{FONT_BOLD}'>{_esc(_record_date(data, recorded_at))}</font>")]
+    for key, label, unit in (("bp", "АД", "мм рт. ст."), ("hr", "ЧСС", "уд/мин"), ("pulse", "Пульс", "уд/мин")):
+        if (data.get(key) or "").strip():
+            left.append(_p(f"{label} {_esc(data[key])} {unit}"))
+
+    right: list = []
+    first = " ".join(_sentence(x) for x in [
+        f"Общее состояние {data['general_state']}" if (data.get("general_state") or "").strip() else "",
+        f"Жалобы {data['complaints']}" if (data.get("complaints") or "").strip() else ""] if x)
+    if first:
+        right.append(_p(_esc(first)))
     eyes = vision_of(data)
     if eyes:
-        out.append(VisionLine(eyes))
+        vis_only = {e: {**v, "iop": ""} for e, v in eyes.items()}
+        iop_only = {e: {**v, "vis": "", "status": "", "corr": "", "result": ""} for e, v in eyes.items()}
+        right += [VisionLine(x) for x in (vis_only, iop_only) if VisionLine(x).groups]
     for eye in ("OD", "OS", "OU"):
         if (data.get(f"{eye.lower()}_text") or "").strip():
-            out.append(_label(eye, data[f"{eye.lower()}_text"]))
+            right.append(_p(f"{eye}: {_esc(data[f'{eye.lower()}_text'])}"))
     treatment = " ".join(x for x in [(data.get("treatment") or "").strip(), ", ".join(_treatment_lines(data.get("basis")))] if x)
     if treatment:
-        out.append(_label("Лечение", treatment))
+        right.append(_p(f"Лечение {_esc(treatment)}"))
     if (data.get("discharge_note") or "").strip():
-        out.append(_p(_esc(data["discharge_note"])))
+        right.append(_p(_esc(data["discharge_note"])))
     if (data.get("recommendations") or "").strip():
-        out.append(_label("Рекомендации", data["recommendations"]))
-    out += [SignLine(doctor or "Подпись"), DashedRule()]
-    return out
+        right.append(_p(f"Рекомендации: {_esc(data['recommendations'])}"))
+
+    table = Table([[left, right or [_p("")]]], colWidths=[DIARY_LEFT, CONTENT_W - DIARY_LEFT], hAlign="LEFT")
+    table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                               ("RIGHTPADDING", (0, 0), (0, 0), 6), ("RIGHTPADDING", (1, 0), (1, 0), 0),
+                               ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
+    return [table, SignLine(doctor or "Подпись"), DashedRule()]
 
 
 def protocol_block(data: dict, recorded_at: str, doctor: str) -> list:

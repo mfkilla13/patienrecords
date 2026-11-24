@@ -388,6 +388,23 @@ def preview_png(conn: sqlite3.Connection, job_id: str, page: int, dpi: int = 110
 
 
 @_serialized
+def block_png(block: list, dpi: int = 130) -> bytes:
+    """One record as it will be on paper, cut out of a sheet: the live preview of a form, drawn by the same
+    code as the print, so the two cannot differ."""
+    import pypdfium2
+
+    lay = printlayout.build([block], printlayout.CONTENT_TOP_MM)
+    place = lay.places[0]
+    img = pypdfium2.PdfDocument(lay.pdf)[place.start_page - 1].render(scale=dpi / 72).to_pil().convert("RGB")
+    px = lambda v: int(v / 25.4 * dpi)  # noqa: E731
+    bottom = place.end_mm if place.end_page == place.start_page else 297 - printlayout.MARGIN_BOTTOM_MM
+    img = img.crop((px(10), px(place.start_mm - 3), img.width - px(10), min(img.height, px(bottom + 3))))
+    out = io.BytesIO()
+    img.save(out, "PNG")
+    return out.getvalue()
+
+
+@_serialized
 def confirm(conn: sqlite3.Connection, job_id: str) -> dict:
     job = _job(conn, job_id)
     if job["status"] != "pending":

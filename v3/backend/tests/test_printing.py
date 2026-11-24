@@ -315,3 +315,23 @@ def test_sheets_carry_the_paper_case_number_not_the_programs(tmp_path):
     with conn:
         conn.execute("UPDATE cases SET med_card = '' WHERE id = ?", (cid,))
     assert printjobs._sheet_info(conn, cid).number == printlayout.paper_number("") == "________"
+
+
+def test_diary_prints_in_two_columns_without_the_time():
+    import pypdfium2
+    from medqt3 import printlayout
+    data = {"date": "2026-11-24", "time": "12:00", "bp": "130/80", "hr": "70", "pulse": "68",
+            "general_state": "удовлетворительное", "complaints": "нет", "vis_od": "0,1", "vis_os": "0,2",
+            "vis_correction_od": "n.k. (не коррег.)", "vis_correction_os": "с коррекцией", "vis_os_corr": "-2,0",
+            "vis_os_result": "0,3", "vgd_od": "19", "vgd_os": "18", "ou_text": "без динамики", "treatment": "по листу назначения"}
+    lay = printlayout.build([printlayout.diary_block(data, "2026-11-24T12:00", "")], printlayout.CONTENT_TOP_MM)
+    page = pypdfium2.PdfDocument(lay.pdf)[0].get_textpage()
+    text = page.get_text_bounded()
+    assert "12:00" not in text and "Дневник" not in text
+    for piece in ("24.11.2026", "АД 130/80 мм рт. ст.", "ЧСС 70 уд/мин", "Пульс 68 уд/мин",
+                  "Общее состояние удовлетворительное. Жалобы нет.", "OU: без динамики", "Лечение по листу назначения"):
+        assert piece in text, piece
+    # the left column holds the vitals: «АД» is left of «Общее состояние»
+    ad = page.search("АД 130").get_next()
+    state = page.search("Общее состояние").get_next()
+    assert ad and state and page.get_charbox(ad[0])[0] < page.get_charbox(state[0])[0]

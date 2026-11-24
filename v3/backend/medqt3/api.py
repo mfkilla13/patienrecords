@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import (__version__, admission, archive, backups, checks, clinical, diaries, dicts, discharge, dischargeprint, exams,
-               prescriptions, paths, printjobs, records, report, reportdoc, rxprint, settings, stats, studies, updater)
+               prescriptions, paths, printjobs, printlayout, records, report, reportdoc, rxprint, settings, stats, studies, updater)
 from . import db as store
 
 class RollbackIn(BaseModel):
@@ -307,6 +307,13 @@ def create_app(db_path: Path | None = None, auto_backup: bool = False, updates: 
     @app.get("/api/cases/{case_id}/diary-draft")
     def get_diary_draft(case_id: str, day: str | None = None):
         return _diary_call(diaries.draft, case_id, day or date.today().isoformat())
+
+    @app.post("/api/diary-preview.png")
+    def post_diary_preview(body: diaries.DiaryIn):
+        """The diary being written, drawn by the print code itself (the form's «Так будет на бумаге»)."""
+        data = body.model_dump()
+        block = printlayout.diary_block(data, f"{body.date}T{body.time}" if body.time else body.date, printjobs._doctor(conn))
+        return Response(printjobs.block_png(block), media_type="image/png", headers={"Cache-Control": "no-store"})
 
     @app.post("/api/cases/{case_id}/diaries", status_code=201)
     def post_diary(case_id: str, body: diaries.DiaryIn):

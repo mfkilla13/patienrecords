@@ -113,3 +113,15 @@ def test_no_diary_is_expected_on_the_day_of_admission(tmp_path):
     assert all(x["caseId"] != cid for x in client.get("/api/round", params={"day": today}).json()["rows"])
     step = next(s for s in client.get(f"/api/cases/{cid}").json()["steps"] if s["key"] == "diaries")
     assert step["state"] == "todo" and step["sub"] == "со следующего дня"
+
+
+def test_diary_preview_is_drawn_by_the_print_code(tmp_path):
+    from fastapi.testclient import TestClient
+    from medqt3 import db as store
+    from medqt3.api import create_app
+    path = tmp_path / "t.db"
+    store.connect(path).close()
+    client = TestClient(create_app(path))
+    r = client.post("/api/diary-preview.png", json={"date": "2026-11-24", "time": "12:00", "bp": "130/80",
+                                                     "general_state": "удовлетворительное", "complaints": "нет"})
+    assert r.status_code == 200 and r.headers["content-type"] == "image/png" and r.content[:4] == b"\x89PNG"

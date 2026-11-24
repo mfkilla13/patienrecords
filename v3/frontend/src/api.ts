@@ -523,6 +523,12 @@ export const api = {
     recordId
       ? request<{ id: string }>("PUT", `/api/cases/${encodeURIComponent(caseId)}/exam/${encodeURIComponent(recordId)}`, { data, templateId })
       : request<{ id: string }>("POST", `/api/cases/${encodeURIComponent(caseId)}/exam`, { data, templateId }),
+  /** The diary as the print code draws it: an object URL of a PNG (revoke it when replaced). */
+  diaryPreview: async (data: DiaryData) => {
+    const res = await fetch("/api/diary-preview.png", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+    if (!res.ok) throw new ApiError(`${res.status}`);
+    return URL.createObjectURL(await res.blob());
+  },
   examPreview: async (data: ExamData) => {
     const res = await fetch("/api/exam-preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data }) });
     if (!res.ok) throw new ApiError(`${res.status}`);
